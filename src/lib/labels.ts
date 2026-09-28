@@ -10,6 +10,8 @@ export const JOB_LABEL: Record<string, string> = {
   "topic.discover": "주제 발굴",
   "post.generate": "원고 생성",
   "post.images": "이미지 생성",
+  "post.aiReview": "AI 사실 검수",
+  "post.rewriteSection": "섹션 다시 쓰기",
   "post.publishPrivate": "비공개 발행",
   "post.publishPublic": "공개 발행",
   "cardnews.generate": "카드뉴스 생성",

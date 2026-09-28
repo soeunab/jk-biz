@@ -9,6 +9,8 @@ export type JobType =
   | "topic.discover"
   | "post.generate"
   | "post.images"
+  | "post.aiReview"
+  | "post.rewriteSection"
   | "post.publishPrivate"
   | "post.publishPublic"
   | "cardnews.generate"

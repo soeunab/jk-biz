@@ -51,6 +51,7 @@ export function ManuscriptEditor({ postId, initial }: { postId: string; initial:
               <div className="mb-2 flex items-center gap-2">
                 <span className="badge bg-gray-100">H{s.level}</span>
                 <input className="input font-semibold" value={s.heading} onChange={(e) => set("sections", m.sections.map((x, j) => (j === i ? { ...x, heading: e.target.value } : x)))} />
+                <SectionRewrite postId={postId} index={i} />
                 <button className="btn-danger text-xs" onClick={() => set("sections", m.sections.filter((_, j) => j !== i))}>삭제</button>
               </div>
               <textarea className="input" rows={7} value={s.body} onChange={(e) => set("sections", m.sections.map((x, j) => (j === i ? { ...x, body: e.target.value } : x)))} />
@@ -82,5 +83,27 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <label className="label">{label}</label>
       {children}
     </div>
+  );
+}
+
+/** 섹션 하나만 AI 로 다시 쓰기 — 저장된 원고 기준으로 실행되고, 완료되면 화면이 새로고침됩니다. */
+function SectionRewrite({ postId, index }: { postId: string; index: number }) {
+  const { busy, msg, submit } = useSubmit();
+  return (
+    <span className="flex flex-col">
+      <button
+        className="btn-secondary whitespace-nowrap text-xs"
+        disabled={busy}
+        onClick={async () => {
+          const instruction = window.prompt("이 섹션을 AI로 다시 씁니다 (저장된 원고 기준, 소제목 유지). 요청 사항이 있으면 적어 주세요.", "");
+          if (instruction === null) return;
+          await submit(`/api/posts/${postId}/section`, { index, instruction });
+          window.location.reload();
+        }}
+      >
+        {busy && <Spinner />}🤖 다시 쓰기
+      </button>
+      {msg && <span className="text-[10px] text-gray-500">{msg}</span>}
+    </span>
   );
 }

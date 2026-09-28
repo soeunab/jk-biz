@@ -16,7 +16,7 @@ export default async function Home() {
     revenueBySource(30),
     statusCounts(),
     db.post.findMany({ where: { status: { in: ["PRIVATE", "APPROVED", "DRAFT"] } }, include: { account: true }, orderBy: { updatedAt: "desc" }, take: 6 }),
-    db.topic.findMany({ where: { status: "NEW" }, orderBy: { totalScore: "desc" }, take: 5 }),
+    db.topic.findMany({ where: { status: "NEW", verification: { not: "UNVERIFIED" } }, orderBy: [{ confidence: "desc" }, { totalScore: "desc" }], take: 5 }),
     db.insight.findMany({ where: { status: "OPEN" }, orderBy: [{ priority: "asc" }, { createdAt: "desc" }], take: 5 }),
   ]);
   const pv = series.reduce((a, p) => a + p.pageviews, 0);
@@ -87,7 +87,7 @@ export default async function Home() {
         </div>
         <div className="card">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold">추천 주제 TOP 5</h2>
+            <h2 className="font-semibold">우선순위 주제 TOP 5</h2>
             <Link href="/topics" className="text-xs text-indigo-600">주제 발굴</Link>
           </div>
           {topics.length === 0 && <p className="text-sm text-gray-500">[주제 발굴]에서 돈 되는 주제를 찾아보세요.</p>}
@@ -96,7 +96,7 @@ export default async function Home() {
               <li key={t.id} className="flex items-center justify-between gap-2 rounded-lg p-2 hover:bg-gray-50">
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium">{t.title}</div>
-                  <div className="text-xs text-gray-500">{t.keyword}{t.searchVolume ? ` · 월 ${formatNumber(t.searchVolume)}회` : ""}</div>
+                  <div className="text-xs text-gray-500">{t.keyword}{t.searchVolume != null ? ` · 월 ${formatNumber(t.searchVolume)}회` : " · 검색량 미확인"}</div>
                 </div>
                 <span className="rounded-md bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-700">{Math.round(t.totalScore)}</span>
               </li>

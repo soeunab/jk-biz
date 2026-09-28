@@ -19,6 +19,7 @@ const NAV = [
   { href: "/affiliates", label: "수익화 상품", icon: "🛍️" },
   { href: "/settings", label: "설정", icon: "⚙️" },
   { href: "/jobs", label: "작업 로그", icon: "🧾" },
+  { href: "/guide", label: "사용 가이드", icon: "📘" },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

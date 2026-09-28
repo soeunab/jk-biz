@@ -1,5 +1,11 @@
 import { clamp } from "../util";
 
+/*
+ * 주제 점수는 "무엇부터 쓸지" 정하는 내부 우선순위 지표입니다. 수익·트래픽 예측이 아닙니다.
+ * 원칙: 확인되지 않은 지표는 지어내지 않고 null(미확인)로 둡니다. 총점은 확인된 지표만으로 계산하고,
+ * 몇 개의 지표가 실제 데이터로 확인됐는지(confidence)를 함께 돌려줍니다.
+ */
+
 /** 상업적 의도(구매·비교·가격)가 담긴 키워드는 광고 단가와 제휴 전환이 높습니다. */
 const COMMERCIAL_TERMS = [
   "추천", "비교", "가격", "요금", "요금제", "유료", "구독", "할인", "후기", "리뷰", "순위", "top", "best",
@@ -21,22 +27,50 @@ export type KeywordMetrics = {
   sources: string[];
 };
 
+/**
+ * 키워드 검증 수준
+ * - VERIFIED: 네이버 검색광고·데이터랩 등 공식 데이터로 검색 수요 확인
+ * - SUGGESTED: 네이버·구글 자동완성에 실제로 노출됨 (존재는 확인, 검색량은 미확인)
+ * - UNVERIFIED: 시드 조합·직접 입력 등 실제 검색 여부를 확인하지 못함
+ */
+export type Verification = "VERIFIED" | "SUGGESTED" | "UNVERIFIED";
+
+export type Intent = "informational" | "commercial" | "transactional" | "navigational";
+
+export const INTENT_LABEL: Record<Intent, string> = {
+  informational: "정보탐색형",
+  navigational: "탐색형",
+  commercial: "상업조사형",
+  transactional: "구매의도형",
+};
+
 export type Scores = {
-  volumeScore: number;
-  competitionScore: number;
+  /** null = 미확인 (데이터 없음) */
+  volumeScore: number | null;
+  competitionScore: number | null;
+  trendScore: number | null;
+  /** 광고경쟁도가 있으면 데이터 기반, 없으면 검색의도 규칙 기반 */
   monetizationScore: number;
-  trendScore: number;
+  monetizationBasis: "ad-data" | "intent-rule";
   relevanceScore: number;
+  /** 우선순위 정렬용 0~100 (예측 아님) */
   total: number;
-  intent: "informational" | "commercial" | "transactional" | "navigational";
+  /** 실제 데이터로 확인된 지표 수 (검색량·경쟁·트렌드 중 0~3) */
+  confidence: number;
+  verification: Verification;
+  intent: Intent;
   targetPlatform: "NAVER" | "BLOGGER" | "BOTH";
 };
 
-export function detectIntent(keyword: string): Scores["intent"] {
+export function normalizeKeyword(k: string): string {
+  return k.toLowerCase().replace(/[\s\p{P}]/gu, "");
+}
+
+export function detectIntent(keyword: string): Intent {
   const k = keyword.toLowerCase();
-  if (/(구매|최저가|할인|쿠폰|결제)/.test(k)) return "transactional";
+  if (/(구매|최저가|할인|쿠폰|결제|주문)/.test(k)) return "transactional";
   if (COMMERCIAL_TERMS.some((t) => k.includes(t))) return "commercial";
-  if (/(로그인|홈페이지|공식|다운로드)$/.test(k)) return "navigational";
+  if (/(로그인|홈페이지|공식|다운로드|사이트)$/.test(k)) return "navigational";
   return "informational";
 }
 
@@ -50,8 +84,8 @@ export function relevance(keyword: string): number {
 }
 
 /** 검색량 점수: 월 1천~3만 구간을 가장 높게 (너무 크면 상위 노출이 어렵고, 너무 작으면 유입이 적음) */
-export function volumeScore(v: number | null | undefined): number {
-  if (v == null) return 40; // 데이터 없음 → 중립
+export function volumeScore(v: number | null | undefined): number | null {
+  if (v == null) return null;
   if (v <= 0) return 0;
   const log = Math.log10(v);
   if (log < 2) return log * 15; // ~100 미만
@@ -59,9 +93,9 @@ export function volumeScore(v: number | null | undefined): number {
   return clamp(100 - (log - 4.5) * 40, 50, 100); // 대형 키워드는 경쟁 부담
 }
 
-/** 경쟁 점수: 문서 수 / 검색량 (포화 지수) 이 낮을수록 좋습니다. */
-export function competitionScore(docs: number | null | undefined, volume: number | null | undefined): number {
-  if (docs == null || volume == null || volume <= 0) return 50;
+/** 경쟁 점수: 문서 수 / 검색량 (포화 지수) 이 낮을수록 좋습니다. 둘 중 하나라도 모르면 미확인. */
+export function competitionScore(docs: number | null | undefined, volume: number | null | undefined): number | null {
+  if (docs == null || volume == null || volume <= 0) return null;
   const saturation = docs / volume;
   // 0.1 이하 매우 좋음(100) … 50 이상 매우 나쁨(0)
   return clamp(100 - Math.log10(saturation / 0.1 + 1) * 37, 0, 100);
@@ -82,10 +116,23 @@ export function monetizationScore(m: KeywordMetrics, affiliateTags: string[] = [
   return clamp(s, 0, 100);
 }
 
-export function trendScore(momentum: number | null | undefined): number {
-  if (momentum == null) return 50;
+export function trendScore(momentum: number | null | undefined): number | null {
+  if (momentum == null) return null;
   // 1.0 = 보합(50점), 2.0 이상 = 급상승(100점), 0.5 이하 = 하락(0점)
   return clamp(50 + Math.log2(momentum) * 50, 0, 100);
+}
+
+export function verificationOf(m: KeywordMetrics): Verification {
+  if (m.monthlySearch != null || m.momentum != null) return "VERIFIED";
+  if (m.sources.some((s) => s.endsWith("-ac") || s === "google-trends" || s === "naver-searchad")) return "SUGGESTED";
+  return "UNVERIFIED";
+}
+
+/** 확인된 항목만으로 가중 평균 (가중치 재정규화) */
+function weighted(parts: [number | null, number][]): number {
+  const known = parts.filter(([v]) => v != null) as [number, number][];
+  const w = known.reduce((a, [, wt]) => a + wt, 0);
+  return w ? known.reduce((a, [v, wt]) => a + v * wt, 0) / w : 0;
 }
 
 export function scoreKeyword(m: KeywordMetrics, affiliateTags: string[] = []): Scores {
@@ -95,22 +142,28 @@ export function scoreKeyword(m: KeywordMetrics, affiliateTags: string[] = []): S
   const ts = trendScore(m.momentum);
   const rs = relevance(m.keyword);
   const intent = detectIntent(m.keyword);
+  const confidence = [vs, cs, ts].filter((x) => x != null).length;
 
   // 네이버: 검색량·경쟁(상위노출 가능성) 중심 / 구글: 수익성(CPC)·에버그린 정보성 중심
-  const naver = vs * 0.3 + cs * 0.3 + ms * 0.2 + ts * 0.2;
-  const google = vs * 0.25 + cs * 0.15 + ms * 0.4 + ts * 0.2;
+  const naver = weighted([[vs, 0.3], [cs, 0.3], [ms, 0.2], [ts, 0.2]]);
+  const google = weighted([[vs, 0.25], [cs, 0.15], [ms, 0.4], [ts, 0.2]]);
   const base = Math.max(naver, google);
   // 브랜드 주제와 관련 없는 키워드는 크게 감점
   const total = Math.round(base * (0.4 + (rs / 100) * 0.6));
-  const targetPlatform = Math.abs(naver - google) < 5 ? "BOTH" : naver > google ? "NAVER" : "BLOGGER";
+  // 확인된 지표가 없으면 플랫폼을 가를 근거도 없음
+  const targetPlatform = confidence === 0 || Math.abs(naver - google) < 5 ? "BOTH" : naver > google ? "NAVER" : "BLOGGER";
+  const r = (x: number | null) => (x == null ? null : Math.round(x));
 
   return {
-    volumeScore: Math.round(vs),
-    competitionScore: Math.round(cs),
+    volumeScore: r(vs),
+    competitionScore: r(cs),
+    trendScore: r(ts),
     monetizationScore: Math.round(ms),
-    trendScore: Math.round(ts),
+    monetizationBasis: m.compIdx ? "ad-data" : "intent-rule",
     relevanceScore: rs,
     total,
+    confidence,
+    verification: verificationOf(m),
     intent,
     targetPlatform,
   };

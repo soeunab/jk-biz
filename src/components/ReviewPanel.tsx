@@ -13,7 +13,7 @@ type Props = {
   meta: { keyword: string; description: string; slug: string; tags: string[]; sources: { title: string; url: string }[] };
 };
 
-const GROUPS = ["SEO", "AEO", "GEO", "수익화", "정책"] as const;
+const GROUPS = ["사실·정책", "SEO", "AEO", "GEO", "수익화", "참고"] as const;
 
 export function ReviewPanel({ postId, report, checklist, reviewerNote, meta }: Props) {
   const key = `review-${postId}`;
@@ -46,12 +46,12 @@ export function ReviewPanel({ postId, report, checklist, reviewerNote, meta }: P
         </div>
         {report && (
           <p className="mt-1 text-xs text-gray-500">
-            {report.stats.chars?.toLocaleString()}자 · 키워드 {report.stats.keywordCount}회 · 소제목 {report.stats.headings} · FAQ {report.stats.faq} · 이미지 {report.stats.images}
+            {report.stats.chars?.toLocaleString("ko-KR")}자 · 키워드 {report.stats.keywordCount}회 · 소제목 {report.stats.headings} · FAQ {report.stats.faq} · 이미지 {report.stats.images}
           </p>
         )}
         {report?.similarity?.warn && (
           <div className="mt-3 rounded-lg bg-red-50 p-2 text-xs text-red-700">
-            ⚠️ 유사문서 위험: “{report.similarity.with?.title}”와 {Math.round(report.similarity.max * 100)}% 유사해요. 관점·예시·구성을 바꿔 주세요.
+            ⚠️ 유사문서 위험: 같은 플랫폼의 “{report.similarity.with?.title}”와 {Math.round(report.similarity.max * 100)}% 유사해요. 관점·예시·구성을 바꿔 주세요.
           </div>
         )}
         <div className="mt-3 flex flex-col gap-3">
@@ -60,11 +60,11 @@ export function ReviewPanel({ postId, report, checklist, reviewerNote, meta }: P
             if (!items.length) return null;
             return (
               <div key={g}>
-                <div className="mb-1 text-xs font-bold text-gray-500">{g}</div>
+                <div className="mb-1 text-xs font-bold text-gray-500">{g}{g === "참고" && <span className="font-normal"> — 공식 규칙이 아닌 독자 관점 참고치 (점수 영향 작음)</span>}</div>
                 <ul className="flex flex-col gap-1">
                   {items.map((c) => (
                     <li key={c.id} className="flex items-start gap-2 text-xs">
-                      <span>{c.pass ? "✅" : "⚠️"}</span>
+                      <span>{c.pass ? "✅" : g === "참고" ? "ℹ️" : "⚠️"}</span>
                       <span className={c.pass ? "text-gray-600" : "font-medium text-gray-900"}>
                         {c.label}
                         {c.detail && <span className="text-gray-400"> — {c.detail}</span>}
@@ -81,7 +81,7 @@ export function ReviewPanel({ postId, report, checklist, reviewerNote, meta }: P
       <div className="card">
         <h3 className="mb-2 font-semibold">사람 검수 체크리스트</h3>
         <ul className="flex flex-col gap-2 text-sm">
-          {[...checklist, "사실·수치·요금이 최신 공식 정보와 일치", "내 경험·의견 한 문단 이상 추가", "제휴 링크·대가성 문구 확인"].map((c, i) => (
+          {[...checklist, "사실·수치·요금이 최신 공식 정보와 일치", "[경험 추가] 자리를 실제 경험으로 채움", "제휴 링크·대가성 문구 확인"].map((c, i) => (
             <li key={i}>
               <label className="flex cursor-pointer items-start gap-2">
                 <input type="checkbox" className="mt-1" checked={!!done[i]} onChange={() => toggle(i)} />

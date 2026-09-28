@@ -69,6 +69,8 @@ export async function getBrand(): Promise<Brand> {
 
 export async function saveBrand(brand: Partial<Brand>) {
   const merged = { ...(await getBrand()), ...brand };
+  // 제휴 링크를 쓰는 한 대가성 문구는 비워 둘 수 없음 (공정위 추천·보증 심사지침)
+  if (!merged.disclosure?.affiliate?.trim()) throw new Error("제휴 대가성 문구는 비워 둘 수 없습니다.");
   await db.setting.upsert({ where: { key: "brand" }, create: { key: "brand", value: merged }, update: { value: merged } });
   return merged;
 }

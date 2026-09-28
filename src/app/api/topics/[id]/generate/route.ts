@@ -7,9 +7,10 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
   const { accountIds } = (await req.json()) as { accountIds: string[] };
   const accounts = await db.account.findMany({ where: { id: { in: accountIds ?? [] }, platform: { in: ["BLOGGER", "NAVER"] } } });
   if (!accounts.length) return fail("원고를 만들 블로그 계정을 1개 이상 선택하세요.");
-  const posts = await createPostsFromTopic(
+  const { posts, skipped } = await createPostsFromTopic(
     (await params).id,
     accounts.map((a) => ({ platform: a.platform as "BLOGGER" | "NAVER", accountId: a.id })),
   );
-  return ok({ posts: posts.map((p) => p.id), redirect: posts.length === 1 ? `/posts/${posts[0].id}` : "/posts" });
+  if (!posts.length) return fail(`중복이라 만들지 않았어요 — ${skipped.join(" / ")}`);
+  return ok({ posts: posts.map((p) => p.id), skipped, redirect: posts.length === 1 ? `/posts/${posts[0].id}` : "/posts" });
 });

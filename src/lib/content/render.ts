@@ -1,7 +1,7 @@
 import { marked } from "marked";
 import type { Brand } from "../brand";
 import { escapeHtml } from "../util";
-import type { Manuscript } from "./types";
+import { PLACEHOLDER_RE, type Manuscript } from "./types";
 
 export type RenderImage = { slot: string; src: string; localPath?: string; alt: string; caption?: string; credit?: string };
 export type RenderProduct = { id: string; name: string; url: string; program: string; price?: number | null };
@@ -14,7 +14,26 @@ export type RenderOptions = {
   adsense?: { client?: string; slot?: string };
   canonicalUrl?: string;
   publishedAt?: Date;
+  /** 경험 자리표시: 검수 미리보기에서는 강조, 발행본에서는 제거 (기본: 제거) */
+  placeholders?: "highlight" | "strip";
+  /** 고위험 주제 고지 문구 (risk.ts) */
+  riskDisclaimers?: string[];
 };
+
+/** 자리표시 처리 — 발행본에 "[경험 추가…]" 문구가 새어 나가지 않게 합니다. */
+export function applyPlaceholders(html: string, mode: "highlight" | "strip" = "strip") {
+  if (mode === "highlight") {
+    return html.replace(PLACEHOLDER_RE, (m) => `<mark style="background:#fef08a;padding:2px 4px;border-radius:4px;">✍️ ${m}</mark>`);
+  }
+  return html.replace(/<p>\s*\[경험 추가:[^\]]*\]\s*<\/p>/g, "").replace(PLACEHOLDER_RE, "");
+}
+
+function riskBox(o: RenderOptions) {
+  if (!o.riskDisclaimers?.length) return "";
+  return `<div style="border:1px solid #fecaca;background:#fef2f2;border-radius:10px;padding:10px 14px;margin:16px 0;font-size:14px;color:#7f1d1d;">${o.riskDisclaimers
+    .map((d) => `<p style="margin:2px 0;">⚠️ ${escapeHtml(d)}</p>`)
+    .join("")}</div>`;
+}
 
 const md = (s: string) => marked.parse(s, { async: false, gfm: true, breaks: true }) as string;
 
@@ -64,6 +83,7 @@ export function renderBlogger(m: Manuscript, o: RenderOptions): string {
   out.push(
     `<div style="background:#f9fafb;border-radius:12px;padding:14px 18px;margin:16px 0;"><p style="margin:0 0 6px;font-weight:700;">📌 핵심 요약</p><ul style="margin:0;padding-left:20px;">${m.tldr.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul></div>`,
   );
+  out.push(riskBox(o));
   out.push(md(m.intro));
   out.push(adsenseUnit(o.adsense));
   out.push(
@@ -102,7 +122,7 @@ export function renderBlogger(m: Manuscript, o: RenderOptions): string {
     `<div style="border-top:1px solid #e5e7eb;margin-top:28px;padding-top:14px;font-size:14px;color:#4b5563;"><b>작성·검수: ${escapeHtml(o.brand.authorName)}</b> — ${escapeHtml(o.brand.authorBio)}<br/>최종 업데이트: ${date}<br/><span style="font-size:12px;">${escapeHtml(o.brand.disclosure.ai)}</span></div>`,
   );
   out.push(jsonLd(m, o, date));
-  return out.filter(Boolean).join("\n");
+  return applyPlaceholders(out.filter(Boolean).join("\n"), o.placeholders);
 }
 
 function jsonLd(m: Manuscript, o: RenderOptions, date: string) {
@@ -141,7 +161,8 @@ export function renderNaverSegments(m: Manuscript, o: RenderOptions): NaverSegme
   const products = new Map((o.products ?? []).map((p) => [p.id, p]));
   let buf: string[] = [];
   const flush = () => {
-    if (buf.length) segs.push({ type: "html", html: buf.join("") });
+    const html = applyPlaceholders(buf.join(""), o.placeholders);
+    if (html.trim()) segs.push({ type: "html", html });
     buf = [];
   };
   const pushImage = (slot: string) => {
@@ -161,6 +182,7 @@ export function renderNaverSegments(m: Manuscript, o: RenderOptions): NaverSegme
   pushImage("thumbnail");
   buf.push(`<p><b>${escapeHtml(m.directAnswer)}</b></p><p><br></p>`);
   buf.push(`<p><b>📌 핵심 요약</b></p>${m.tldr.map((t) => `<p>✔ ${escapeHtml(t)}</p>`).join("")}<p><br></p>`);
+  if (o.riskDisclaimers?.length) buf.push(o.riskDisclaimers.map((d) => `<p><b>⚠️ ${escapeHtml(d)}</b></p>`).join(""));
   buf.push(simpleMd(m.intro));
 
   m.sections.forEach((s, i) => {
@@ -178,6 +200,10 @@ export function renderNaverSegments(m: Manuscript, o: RenderOptions): NaverSegme
   buf.push(`<p><br></p><h3><b>자주 묻는 질문</b></h3>`);
   for (const f of m.faq) buf.push(`<p><b>Q. ${escapeHtml(f.q)}</b></p><p>A. ${escapeHtml(f.a)}</p><p><br></p>`);
   buf.push(simpleMd(m.conclusion), `<p><b>${escapeHtml(m.cta)}</b></p>`);
+  // 출처 링크는 네이버에서도 문제되지 않음 (같은 링크 반복 게재만 피하면 됨) — 신뢰도·GEO 를 위해 노출
+  if (m.sources.length) {
+    buf.push(`<p><br></p><p><b>참고 자료</b></p>${m.sources.map((s) => `<p>· <a href="${escapeHtml(s.url)}">${escapeHtml(s.title)}</a></p>`).join("")}`);
+  }
   buf.push(`<p><span style="color:#888888;">${escapeHtml(o.brand.disclosure.ai)}</span></p>`);
   flush();
   return segs;

@@ -90,7 +90,7 @@ export function mockManuscript(b: {
     {
       heading: `${k} 시작하는 방법은? (가입부터 첫 질문까지)`,
       level: 2,
-      body: `1. ${officialUrl} 에 접속해요.\n2. 구글/이메일 계정으로 로그인해요.\n3. 입력창에 첫 질문을 적고 전송하면 끝이에요.\n\n제가 직접 해보니 **가입부터 첫 답변까지 3분이면 충분**했어요.`,
+      body: `1. ${officialUrl} 에 접속해요.\n2. 구글/이메일 계정으로 로그인해요.\n3. 입력창에 첫 질문을 적고 전송하면 끝이에요.\n\n[경험 추가: 가입부터 첫 답변까지 실제로 걸린 시간과 막혔던 부분]`,
       table: null,
       tip: "",
       image: img(2, "ai", "flat illustration of a person signing up to an AI assistant on a laptop, pastel colors, no text", `${k} 가입 과정 일러스트`),
@@ -98,7 +98,7 @@ export function mockManuscript(b: {
     {
       heading: `${p.label} 실전 활용 예시 3가지`,
       level: 2,
-      body: `${p.needs.slice(0, 3).map((n, i) => `${i + 1}. **${n}** — 상황을 구체적으로 설명하고 결과 형식을 지정하세요.`).join("\n")}\n\n> 프롬프트 예시: "나는 ${p.label}야. ${p.needs[0]}을(를) 표로 정리해 줘. 항목은 할 일, 소요 시간, 우선순위로 해 줘."`,
+      body: `${p.needs.slice(0, 3).map((n, i) => `${i + 1}. **${n}** — 상황을 구체적으로 설명하고 결과 형식을 지정하세요.`).join("\n")}\n\n[경험 추가: 이 프롬프트로 실제 받아본 결과와 수정한 점]\n\n> 프롬프트 예시: "나는 ${p.label}야. ${josa(p.needs[0], "을/를")} 표로 정리해 줘. 항목은 할 일, 소요 시간, 우선순위로 해 줘."`,
       table: null,
       tip: "결과가 마음에 안 들면 '더 짧게', '표로', '초보자 눈높이로'처럼 수정 요청을 이어가세요.",
       image: img(3, "stock", "person working laptop home office", `${p.label} ${tool} 활용 모습`),
@@ -165,7 +165,7 @@ export function mockManuscript(b: {
     reviewChecklist: [
       `${tool} 요금제·무료 한도가 ${year}년 ${month}월 기준과 일치하는지 확인`,
       "스크린샷을 직접 캡처한 화면으로 교체하면 신뢰도가 올라가요",
-      "개인 경험(소요 시간, 결과물) 한 문단 추가",
+      "[경험 추가] 자리표시를 실제 경험으로 채우기",
     ],
   };
 }

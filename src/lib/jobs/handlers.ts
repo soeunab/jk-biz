@@ -7,6 +7,8 @@ import { publishPrivate, publishPublic, publishSocial } from "../publishers";
 import { syncAnalytics } from "../analytics/sync";
 import { generateInsights } from "../insights/engine";
 import { db } from "../db";
+import { runAiReview } from "../content/review";
+import { rewriteSection } from "../content/section";
 import type { JobContext, JobType } from "./queue";
 
 type Handler = (payload: Record<string, unknown>, ctx: JobContext) => Promise<unknown>;
@@ -21,6 +23,8 @@ export const handlers: Record<JobType, Handler> = {
     await buildPostImages(post.id, m, post.platform as "NAVER" | "BLOGGER", (msg) => ctx.log(msg));
     return rerenderPost(post.id).then((r) => ({ seoScore: r.score }));
   },
+  "post.aiReview": (p, ctx) => runAiReview(String(p.postId), ctx),
+  "post.rewriteSection": (p, ctx) => rewriteSection(String(p.postId), Number(p.index), String(p.instruction ?? ""), ctx),
   "post.publishPrivate": async (p, ctx) => {
     try {
       return await publishPrivate(String(p.postId), ctx);

@@ -11,7 +11,7 @@ import {
   naverSearchAdKeywords,
   naverTrendMomentum,
 } from "./sources";
-import { relevance, scoreKeyword, type KeywordMetrics } from "./scoring";
+import { INTENT_LABEL, normalizeKeyword, relevance, scoreKeyword, type KeywordMetrics, type Verification } from "./scoring";
 import { josa } from "../util";
 
 export type DiscoverOptions = {
@@ -21,7 +21,8 @@ export type DiscoverOptions = {
   limit?: number;
 };
 
-const INTENT_KO = { informational: "정보형", commercial: "비교·구매 고려형", transactional: "구매형", navigational: "탐색형" } as const;
+const VERIFICATION_RANK: Record<Verification, number> = { VERIFIED: 0, SUGGESTED: 1, UNVERIFIED: 2 };
+const VERIFICATION_LABEL: Record<Verification, string> = { VERIFIED: "공식데이터 확인", SUGGESTED: "자동완성 확인", UNVERIFIED: "미검증" };
 
 const PERSONA_MODIFIERS = ["사용법", "무료", "활용법", "프롬프트", "업무", "보고서", "직장인", "프리랜서", "1인 가구", "비교"];
 
@@ -33,7 +34,7 @@ const IdeaSchema = z.object({
       angle: z.string().describe("차별화 관점·구성 한 줄"),
       persona: z.enum(["SOLO", "FREELANCER", "OFFICE", "GENERAL"]),
       tool: z.string().describe("주로 다루는 AI 도구 이름"),
-      rationale: z.string().describe("이 주제가 돈이 되는 이유 (검색량·경쟁·수익화 관점) 1~2문장"),
+      rationale: z.string().describe("선정 이유 1~2문장 — 후보 표에 주어진 지표만 근거로 인용. 표에 없는 수치·수익 예측 금지, 미확인 지표는 미확인이라고 쓸 것"),
     }),
   ),
 });
@@ -45,11 +46,16 @@ export async function discoverTopics(opts: DiscoverOptions, ctx?: JobContext) {
   const limit = opts.limit ?? 15;
   const log = (m: string) => ctx?.log(m);
 
-  // 1) 자동완성으로 롱테일 키워드 확장
+  // 1) 자동완성으로 롱테일 키워드 확장 (자동완성은 "후보 제안"용, 수요 검증은 공식 API 로)
+  //    "제미나이 사용법"/"제미나이사용법" 처럼 표기만 다른 키워드는 정규화해서 하나로 합칩니다.
   const sourcesByKeyword = new Map<string, Set<string>>();
+  const displayByNorm = new Map<string, string>();
   const add = (k: string, src: string) => {
-    const key = k.trim().replace(/\s+/g, " ");
-    if (key.length < 2 || key.length > 40) return;
+    const text = k.trim().replace(/\s+/g, " ");
+    if (text.length < 2 || text.length > 40) return;
+    const norm = normalizeKeyword(text);
+    const key = displayByNorm.get(norm) ?? text;
+    displayByNorm.set(norm, key);
     if (!sourcesByKeyword.has(key)) sourcesByKeyword.set(key, new Set());
     sourcesByKeyword.get(key)!.add(src);
   };
@@ -63,7 +69,7 @@ export async function discoverTopics(opts: DiscoverOptions, ctx?: JobContext) {
     if (nav.status === "rejected" && goo.status === "rejected") networkOk = false;
   }
   if (!networkOk) {
-    await log("자동완성 API 접속 실패 — 시드 키워드 조합으로 대체합니다.");
+    await log("자동완성 API 접속 실패 — 시드 키워드 조합을 '미검증' 후보로 추가합니다 (실제 검색 여부 미확인).");
     for (const seed of seeds) for (const m of PERSONA_MODIFIERS) if (!seed.includes(m)) add(`${seed.split(" ")[0]} ${m}`, "template");
   }
   const trending = await googleTrendingKR().catch(() => []);
@@ -79,10 +85,10 @@ export async function discoverTopics(opts: DiscoverOptions, ctx?: JobContext) {
   try {
     const ad = await naverSearchAdKeywords(seeds);
     for (const a of ad) {
-      adMap.set(a.keyword.replace(/\s/g, ""), a);
-      if (relevance(a.keyword) >= 60 && !sourcesByKeyword.has(a.keyword)) {
+      adMap.set(normalizeKeyword(a.keyword), a);
+      if (relevance(a.keyword) >= 60) {
         add(a.keyword, "naver-searchad");
-        candidates.push(a.keyword);
+        candidates.push(displayByNorm.get(normalizeKeyword(a.keyword)) ?? a.keyword);
       }
     }
     if (ad.length) await log(`네이버 검색광고 연관 키워드 ${ad.length}개 조회`);
@@ -106,7 +112,7 @@ export async function discoverTopics(opts: DiscoverOptions, ctx?: JobContext) {
 
   const scored = candidates
     .map((keyword) => {
-      const ad = adMap.get(keyword.replace(/\s/g, ""));
+      const ad = adMap.get(normalizeKeyword(keyword));
       const metrics: KeywordMetrics = {
         keyword,
         monthlySearch: ad ? ad.monthlyPc + ad.monthlyMobile : null,
@@ -119,15 +125,16 @@ export async function discoverTopics(opts: DiscoverOptions, ctx?: JobContext) {
       return { metrics, scores: scoreKeyword(metrics, affiliateTags) };
     })
     .filter((s) => opts.platform === undefined || opts.platform === "BOTH" || s.scores.targetPlatform !== (opts.platform === "NAVER" ? "BLOGGER" : "NAVER"))
-    .sort((a, b) => b.scores.total - a.scores.total)
+    // 공식 데이터로 확인된 키워드 우선, 같은 수준에서는 우선순위 점수 순
+    .sort((a, b) => VERIFICATION_RANK[a.scores.verification] - VERIFICATION_RANK[b.scores.verification] || b.scores.total - a.scores.total)
     .slice(0, Math.max(limit * 2, 20));
 
   // 이미 다룬 키워드는 제외하고, 한 도구에 쏠리지 않도록 도구별 상한을 둡니다.
-  const existing = new Set((await db.topic.findMany({ select: { keyword: true } })).map((t) => t.keyword));
+  const existing = new Set((await db.topic.findMany({ select: { keyword: true } })).map((t) => normalizeKeyword(t.keyword)));
   const perTool = new Map<string, number>();
   const cap = Math.max(2, Math.ceil(limit / 3));
   const fresh = scored.filter((s) => {
-    if (existing.has(s.metrics.keyword)) return false;
+    if (existing.has(normalizeKeyword(s.metrics.keyword))) return false;
     const tool = guessTool(s.metrics.keyword);
     perTool.set(tool, (perTool.get(tool) ?? 0) + 1);
     return perTool.get(tool)! <= cap;
@@ -140,7 +147,7 @@ export async function discoverTopics(opts: DiscoverOptions, ctx?: JobContext) {
   const table = fresh
     .map(
       (s) =>
-        `- ${s.metrics.keyword} | 월검색 ${s.metrics.monthlySearch ?? "?"} | 문서수 ${s.metrics.documentCount ?? "?"} | 광고경쟁 ${s.metrics.compIdx ?? "?"} | 점수 ${s.scores.total} | 의도 ${s.scores.intent}`,
+        `- ${s.metrics.keyword} | ${VERIFICATION_LABEL[s.scores.verification]} | 월검색 ${s.metrics.monthlySearch ?? "미확인"} | 문서수 ${s.metrics.documentCount ?? "미확인"} | 광고경쟁 ${s.metrics.compIdx ?? "미확인"} | 우선순위 ${s.scores.total} | ${INTENT_LABEL[s.scores.intent]}`,
     )
     .join("\n");
 
@@ -154,6 +161,8 @@ ${personaHint}
 - keyword 는 반드시 후보 목록의 키워드를 그대로 사용하세요.
 - 같은 키워드로 기획을 두 번 만들지 마세요.
 - 제목은 검색 키워드를 앞쪽에 두고, 숫자·연도·대상 독자를 활용해 클릭을 유도하되 과장하지 마세요.
+- "공식데이터 확인" 키워드를 우선하세요. "미검증" 키워드는 실제로 검색되는지 모르므로 꼭 필요할 때만 고르세요.
+- 우선순위 점수는 정렬용 내부 지표일 뿐 수익·트래픽 예측이 아닙니다. rationale 에 수익을 약속하거나 표에 없는 수치를 쓰지 마세요.
 
 후보 키워드:
 ${table}`,
@@ -171,7 +180,7 @@ ${table}`,
           angle: `${PERSONAS[persona].label}의 ${PERSONAS[persona].needs[i % PERSONAS[persona].needs.length]} 상황에 ${josa(tool, "을/를")} 적용하는 단계별 가이드`,
           persona,
           tool,
-          rationale: `검색 의도가 ${INTENT_KO[s.scores.intent]}이고 종합 점수 ${s.scores.total}점으로 상위 노출과 수익화 가능성이 높습니다.`,
+          rationale: evidenceSummary(s.metrics, s.scores),
         };
       }),
     }),
@@ -195,12 +204,15 @@ ${table}`,
           tool: idea.tool,
           targetPlatform: s.scores.targetPlatform,
           intent: s.scores.intent,
-          searchVolume: s.metrics.monthlySearch ?? 0,
-          documentCount: s.metrics.documentCount ?? 0,
+          normalizedKeyword: normalizeKeyword(s.metrics.keyword),
+          searchVolume: s.metrics.monthlySearch ?? null,
+          documentCount: s.metrics.documentCount ?? null,
           trendScore: s.scores.trendScore,
           competitionScore: s.scores.competitionScore,
           monetizationScore: s.scores.monetizationScore,
           totalScore: s.scores.total,
+          confidence: s.scores.confidence,
+          verification: s.scores.verification,
           rationale: idea.rationale,
           signals: { ...s.scores, sources: s.metrics.sources, compIdx: s.metrics.compIdx, momentum: s.metrics.momentum },
         },
@@ -209,6 +221,19 @@ ${table}`,
   }
   await ctx?.progress(100, `주제 ${created.length}개 저장`);
   return { created: created.length };
+}
+
+/** 실제 수집된 지표만 나열한 선정 근거 (없는 수치를 만들지 않음) */
+export function evidenceSummary(m: KeywordMetrics, sc: ReturnType<typeof scoreKeyword>): string {
+  const parts = [
+    VERIFICATION_LABEL[sc.verification],
+    m.monthlySearch != null ? `월 검색 ${m.monthlySearch.toLocaleString("ko-KR")}회` : "검색량 미확인",
+    m.compIdx ? `광고경쟁 ${m.compIdx}` : null,
+    m.documentCount != null ? `블로그 문서 ${m.documentCount.toLocaleString("ko-KR")}건` : null,
+    m.momentum != null ? `최근 4주 추이 ${m.momentum >= 1 ? "상승" : "하락"}(${m.momentum.toFixed(2)}배)` : null,
+    INTENT_LABEL[sc.intent],
+  ].filter(Boolean);
+  return `${parts.join(" · ")}. 우선순위 ${sc.total}점(확인 지표 ${sc.confidence}/3, 수익 예측 아님).`;
 }
 
 export function guessTool(keyword: string): string {

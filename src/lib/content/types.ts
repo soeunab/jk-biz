@@ -51,3 +51,6 @@ export type Manuscript = z.infer<typeof ManuscriptSchema>;
 export type Section = z.infer<typeof SectionSchema>;
 export type ImageSlot = z.infer<typeof ImageSlotSchema>;
 export type Platform = "NAVER" | "BLOGGER";
+
+/** 사람이 채워야 하는 경험 자리표시. AI 는 경험을 지어내지 않고 이 형식으로 자리만 남깁니다. */
+export const PLACEHOLDER_RE = /\[경험 추가:[^\]]*\]/g;

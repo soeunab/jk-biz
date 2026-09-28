@@ -9,6 +9,10 @@ import { AssetCard } from "@/components/AssetCard";
 import { ManuscriptEditor } from "@/components/ManuscriptEditor";
 import { ReviewPanel, MarkPublished } from "@/components/ReviewPanel";
 import { Badge, PLATFORM, POST_STATUS } from "@/components/ui";
+import { ApproveButton, RejectButton } from "@/components/ApproveButton";
+import { AiReviewCard } from "@/components/AiReviewCard";
+import { getBrand } from "@/lib/brand";
+import { readinessIssues } from "@/lib/content/readiness";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +42,7 @@ export default async function PostPage({ params, searchParams }: { params: Promi
     .slice(0, 5);
   const busy = post.status === "GENERATING" || jobs.some((j) => j.status === "QUEUED" || j.status === "RUNNING");
   const stepIndex = STEPS.findIndex((s) => s.key === post.status);
+  const issues = m && ["DRAFT", "PRIVATE", "APPROVED"].includes(post.status) ? readinessIssues(m, { brand: await getBrand(), similarity: report?.similarity }) : [];
   const demo = (post.account?.settings as { demo?: boolean } | null)?.demo;
 
   return (
@@ -74,8 +79,9 @@ export default async function PostPage({ params, searchParams }: { params: Promi
           )}
           {post.status === "PRIVATE" && (
             <>
-              <ActionButton url={`/api/posts/${id}/action`} body={{ action: "approve" }} className="btn-success" label="✅ 검수 완료 · 승인" confirm="체크리스트를 모두 확인하셨나요? 승인 후 공개 발행할 수 있습니다." />
+              <ApproveButton postId={id} />
               <ActionButton url={`/api/posts/${id}/action`} body={{ action: "publishPrivate" }} label="🔁 수정본 다시 올리기" />
+              <RejectButton postId={id} />
             </>
           )}
           {post.status === "APPROVED" && (
@@ -85,11 +91,21 @@ export default async function PostPage({ params, searchParams }: { params: Promi
             </>
           )}
           {["PRIVATE", "APPROVED"].includes(post.status) && <MarkPublished postId={id} />}
+          {post.status === "DRAFT" && <RejectButton postId={id} />}
+          {post.status === "REJECTED" && <ActionButton url={`/api/posts/${id}/action`} body={{ action: "reopen" }} label="↩️ 다시 검토하기" />}
           {post.status !== "GENERATING" && (
             <ActionButton url={`/api/posts/${id}/action`} body={{ action: "cardnews" }} label="🖼️ 카드뉴스 만들기" />
           )}
         </div>
       </div>
+
+      {issues.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="mb-1 font-semibold">승인 전 확인할 사항 {issues.length}건</div>
+          <ul className="list-disc space-y-0.5 pl-5">{issues.map((i) => <li key={i.id}>{i.message}</li>)}</ul>
+          <p className="mt-1 text-xs text-amber-700">자동 점검은 판단을 돕는 용도예요. 확인 후 승인 여부는 검수자가 결정합니다.</p>
+        </div>
+      )}
 
       {post.error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm whitespace-pre-wrap text-red-700">⚠️ {post.error}</div>}
 
@@ -138,6 +154,11 @@ export default async function PostPage({ params, searchParams }: { params: Promi
           </div>
 
           <aside className="flex flex-col gap-4">
+            <AiReviewCard
+              postId={id}
+              review={(post.aiReview ?? null) as Parameters<typeof AiReviewCard>[0]["review"]}
+              atLabel={(post.aiReview as { at?: string } | null)?.at ? new Date((post.aiReview as { at: string }).at).toLocaleString("ko-KR") : undefined}
+            />
             <ReviewPanel
               postId={id}
               report={report}

@@ -14,6 +14,7 @@ export function ruleInsights(
   posts: PostPerf[],
   accounts: Awaited<ReturnType<typeof accountPerformance>>,
   backlog: { id: string; title: string; privateAt: Date | null }[],
+  /** 운영자가 정한 발행 리듬 (플랫폼 공식 기준이 아님) */
   targetPerWeek = 3,
 ): NewInsight[] {
   const out: NewInsight[] = [];
@@ -63,7 +64,7 @@ export function ruleInsights(
       out.push({
         type: "CADENCE", priority: 2,
         title: `발행 주기 부족: ${a.name}`,
-        body: `최근 30일 주당 ${perWeek.toFixed(1)}개 발행했어요. ${a.platform === "NAVER" ? "네이버는 꾸준한 발행이 C-Rank(블로그 신뢰도)에 중요해요" : "구글은 주제 클러스터를 촘촘히 채울수록 전체 노출이 올라가요"}. 주 ${targetPerWeek}개를 목표로 해 보세요.`,
+        body: `최근 30일 주당 ${perWeek.toFixed(1)}개 발행했어요. 꾸준히 발행하면 독자가 다시 찾아올 이유가 생기고 주제 묶음(내부 링크)도 촘촘해져요. 정해 둔 리듬(주 ${targetPerWeek}개)은 운영 목표일 뿐 플랫폼 공식 기준은 아니니, 품질을 해치지 않는 선에서 맞춰 보세요.`,
         data: { accountId: a.id },
       });
     }

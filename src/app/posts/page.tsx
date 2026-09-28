@@ -12,6 +12,7 @@ const FILTERS = [
   ["PRIVATE", "검수 대기"],
   ["APPROVED", "승인됨"],
   ["PUBLISHED", "발행 완료"],
+  ["REJECTED", "반려"],
   ["FAILED", "실패"],
 ];
 

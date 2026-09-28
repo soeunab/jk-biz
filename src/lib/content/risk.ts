@@ -1,0 +1,71 @@
+/**
+ * 고위험 주제(세무·금융·법률·건강·부동산·정부지원) 감지.
+ * 이 블로그는 1인 가구 지원금·청약, 프리랜서 종합소득세처럼 사람의 돈·권리에 영향을 주는 주제를 다루므로
+ * 감지되면 출처 필수·예측성 표현 금지·고지 문구 자동 삽입을 적용합니다.
+ * (자동 검사는 차단을 결정하지 않고, 사람이 읽을 수 있는 사유를 만들어 검수를 돕는 역할만 합니다.)
+ */
+export type RiskCategory = "TAX" | "FINANCE" | "LEGAL" | "HEALTH" | "HOUSING" | "WELFARE";
+
+const RULES: { cat: RiskCategory; label: string; re: RegExp; disclaimer: string }[] = [
+  {
+    cat: "TAX",
+    label: "세무",
+    re: /(세금|종합소득세|종소세|부가세|부가가치세|원천징수|연말정산|세액|절세|홈택스|경비처리|사업자등록)/,
+    disclaimer: "이 글은 일반적인 정보이며, 개인 상황에 따라 세액·신고 방법이 달라질 수 있으니 국세청(홈택스) 또는 세무 전문가에게 확인하세요.",
+  },
+  {
+    cat: "FINANCE",
+    label: "금융·투자",
+    re: /(주식|코인|가상자산|비트코인|펀드|etf|재테크|대출|금리|적금|예금|보험|투자\s?(상품|방법|수익|종목|전략))/i,
+    disclaimer: "이 글은 정보 제공 목적이며 투자·금융상품 권유가 아닙니다. 판단과 책임은 본인에게 있습니다.",
+  },
+  {
+    cat: "LEGAL",
+    label: "법률",
+    re: /(법률|소송|계약서|근로계약|저작권|개인정보보호법|위약금|손해배상|고소)/,
+    disclaimer: "이 글은 일반적인 정보이며 법률 자문이 아닙니다. 구체적인 사안은 변호사 등 전문가와 상담하세요.",
+  },
+  {
+    cat: "HEALTH",
+    label: "건강·의료",
+    re: /(건강검진|건강관리|질병|증상|치료|약물|병원|다이어트|영양제|수면장애|우울증)/,
+    disclaimer: "이 글은 의학적 조언이 아닙니다. 건강 관련 결정은 의료 전문가와 상담하세요.",
+  },
+  {
+    cat: "HOUSING",
+    label: "부동산·주거",
+    re: /(청약|전세|월세|보증금|임대차|부동산|주택담보)/,
+    disclaimer: "청약·임대차 조건은 공고와 법령에 따라 달라지므로 반드시 공식 공고(청약홈 등)와 계약서를 확인하세요.",
+  },
+  {
+    cat: "WELFARE",
+    label: "정부지원",
+    re: /(지원금|보조금|정부지원|수당|바우처|복지|국민취업지원|청년도약|장려금)/,
+    disclaimer: "지원 대상·금액·신청 기간은 공고마다 달라지므로 반드시 정부24·복지로 등 공식 공고에서 확인하세요.",
+  },
+];
+
+/** 예측·보장성 표현 (고위험 주제에서 금지) */
+export const PREDICTIVE_RE = /(오를 것|오를 전망|떨어질 것|반드시 오|확실히 (벌|받|오르)|무조건 (받|벌|오르|승인)|수익 보장|100% (환급|승인|보장))/;
+
+export type RiskResult = { categories: RiskCategory[]; labels: string[]; disclaimers: string[] };
+
+/** 원고의 주제 신호(키워드·제목·소제목)로만 판단 — 본문의 스쳐 가는 단어로 오탐하지 않도록 */
+export function manuscriptRiskText(m: { focusKeyword: string; title: string; sections: { heading: string }[] }) {
+  return [m.focusKeyword, m.title, ...m.sections.map((s) => s.heading)].join(" ");
+}
+
+export function detectRisk(text: string): RiskResult | null {
+  const hits = RULES.filter((r) => r.re.test(text));
+  if (!hits.length) return null;
+  return { categories: hits.map((h) => h.cat), labels: hits.map((h) => h.label), disclaimers: hits.map((h) => h.disclaimer) };
+}
+
+export function riskPromptRules(risk: RiskResult | null): string {
+  if (!risk) return "";
+  return `
+[고위험 주제 규칙 — 감지: ${risk.labels.join(", ")}]
+- 금액·요건·기한·세율 등 핵심 주장마다 공식 출처(정부·기관·공식 문서)를 sources 에 기록하세요. 출처가 없으면 쓰지 말고 reviewChecklist 에 남기세요.
+- "오를 것이다", "무조건 받는다", "수익 보장" 같은 예측·보장 표현을 쓰지 마세요. 확인된 사실과 판단에 필요한 재료만 제공하세요.
+- 개인 상황에 따라 달라질 수 있다는 점을 본문에 밝히세요. (고지 문구는 시스템이 자동으로 붙입니다)`;
+}

@@ -6,6 +6,7 @@ export const POST_STATUS: Record<string, { label: string; cls: string }> = {
   PRIVATE: { label: "비공개 발행 · 검수 대기", cls: "bg-amber-50 text-amber-700" },
   APPROVED: { label: "승인됨", cls: "bg-indigo-50 text-indigo-700" },
   PUBLISHED: { label: "발행 완료", cls: "bg-emerald-50 text-emerald-700" },
+  REJECTED: { label: "반려", cls: "bg-rose-50 text-rose-700" },
   FAILED: { label: "실패", cls: "bg-red-50 text-red-700" },
 };
 
@@ -16,6 +17,12 @@ export const PLATFORM: Record<string, { label: string; cls: string }> = {
   THREADS: { label: "스레드", cls: "bg-gray-100 text-gray-800" },
   FACEBOOK: { label: "페이스북", cls: "bg-blue-50 text-blue-700" },
   BOTH: { label: "블로거+네이버", cls: "bg-violet-50 text-violet-700" },
+};
+
+export const VERIFICATION: Record<string, { label: string; cls: string }> = {
+  VERIFIED: { label: "공식데이터 확인", cls: "bg-emerald-50 text-emerald-700" },
+  SUGGESTED: { label: "자동완성 확인", cls: "bg-sky-50 text-sky-700" },
+  UNVERIFIED: { label: "미검증", cls: "bg-gray-100 text-gray-500" },
 };
 
 export const PERSONA_LABEL: Record<string, string> = { SOLO: "1인 가구", FREELANCER: "프리랜서", OFFICE: "직장인", GENERAL: "입문자" };
@@ -47,7 +54,8 @@ export function Stat({ label, value, sub }: { label: string; value: ReactNode; s
   );
 }
 
-export function ScoreBar({ value }: { value: number }) {
+export function ScoreBar({ value }: { value: number | null }) {
+  if (value == null) return <span className="whitespace-nowrap text-xs text-gray-400" title="공식 데이터로 확인하지 못한 지표">미확인</span>;
   const color = value >= 70 ? "bg-emerald-500" : value >= 40 ? "bg-amber-500" : "bg-red-500";
   return (
     <div className="flex items-center gap-2">
