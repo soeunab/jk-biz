@@ -57,7 +57,12 @@ export function claudeCodeArgs(req: ClaudeCodeRequest): string[] {
     "--tools", tools.join(","),
   ];
   if (tools.length) args.push("--allowedTools", ...tools);
-  if (req.jsonSchema && process.env.CLAUDE_CODE_JSON_SCHEMA !== "0") args.push("--json-schema", JSON.stringify(req.jsonSchema));
+  if (req.jsonSchema && process.env.CLAUDE_CODE_JSON_SCHEMA !== "0") {
+    // zod의 toJSONSchema() 가 넣는 $schema 메타 필드를 Claude Code CLI 가 해석하지 못해
+    // "no schema with key or ref ..." 오류를 내므로 제거하고 전달합니다.
+    const { $schema: _drop, ...schema } = req.jsonSchema as Record<string, unknown>;
+    args.push("--json-schema", JSON.stringify(schema));
+  }
   return args;
 }
 
