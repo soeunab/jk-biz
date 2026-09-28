@@ -14,7 +14,7 @@ async function main() {
   const args = process.argv.slice(2);
   const urlIdx = args.indexOf("--url");
   const url = urlIdx >= 0 ? args[urlIdx + 1] : undefined;
-  const accountId = args.find((a, i) => !a.startsWith("--") && i !== urlIdx + 1);
+  const accountId = args.find((a, i) => !a.startsWith("--") && (urlIdx < 0 || i !== urlIdx + 1));
   if (!accountId) {
     const naver = await db.account.findMany({ where: { platform: "NAVER" }, select: { id: true, name: true, externalId: true } });
     console.log("사용법: npm run naver:check -- <계정ID>\n네이버 계정:");
