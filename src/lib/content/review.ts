@@ -41,6 +41,9 @@ export async function runAiReview(postId: string, ctx?: JobContext) {
   await ctx?.progress(50, "원고 대조 중…");
 
   const result = await generateJson({
+    name: "factReview",
+    task: "write",
+    title: `AI 사실 검수: ${m.title}`,
     system: `당신은 ${platformName} 원고의 최종 사실 검수자입니다.
 [먼저] 이 원고의 플랫폼이 ${platformName}임을 확인하고 platform 필드에 기록하세요.
 [바꿔도 되는 것] 사실 오류, 오탈자 — 이 두 가지뿐입니다.

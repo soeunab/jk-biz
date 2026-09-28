@@ -6,7 +6,7 @@ import { JOB_LABEL } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
 
-const STATUS: Record<string, string> = { QUEUED: "⏳ 대기", RUNNING: "🔄 실행 중", DONE: "✅ 완료", FAILED: "❌ 실패" };
+const STATUS: Record<string, string> = { QUEUED: "⏳ 대기", RUNNING: "🔄 실행 중", WAITING: "✋ 수동 입력 대기", DONE: "✅ 완료", FAILED: "❌ 실패" };
 
 export default async function JobsPage() {
   const jobs = await db.job.findMany({ orderBy: { createdAt: "desc" }, take: 100 });

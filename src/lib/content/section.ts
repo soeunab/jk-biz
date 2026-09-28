@@ -20,6 +20,9 @@ export async function rewriteSection(postId: string, index: number, instruction:
   const outline = m.sections.map((s, i) => `${i === index ? "▶ " : ""}${i + 1}. ${s.heading}`).join("\n");
 
   const section = await generateJson({
+    name: "section",
+    task: "write",
+    title: `섹션 다시 쓰기: ${m.title} — ${index + 1}번 "${target.heading}"`,
     system: buildSystemPrompt(brand, post.platform as Platform),
     prompt: `아래 원고의 ${index + 1}번 섹션만 다시 써 주세요.
 - 소제목(heading)은 그대로 유지하세요: "${target.heading}"

@@ -15,7 +15,8 @@
     "setup": "prisma db push && tsx prisma/seed.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check:concepts": "tsx scripts/check-concepts.ts"
+    "check:concepts": "tsx scripts/check-concepts.ts",
+    "check:ai": "tsx scripts/check-ai.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

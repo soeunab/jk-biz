@@ -6,6 +6,8 @@ import { ActionButton } from "@/components/ActionButton";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { CaptionEditor, SlideEditor, SocialPublish } from "@/components/CardNewsForms";
 import { Badge, PLATFORM } from "@/components/ui";
+import { ManualTaskCard } from "@/components/ManualTaskCard";
+import { pendingManualTasks } from "@/lib/manualTasks";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +32,7 @@ export default async function CardNewsDetail({ params }: { params: Promise<{ id:
         </div>
       </div>
       {card.error && <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{card.error}</div>}
+      {(await pendingManualTasks({ cardNewsId: id })).map((t) => <ManualTaskCard key={t.id} {...t} link={undefined} />)}
 
       <div className="card">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

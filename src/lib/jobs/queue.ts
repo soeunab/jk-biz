@@ -72,3 +72,15 @@ export async function recoverStaleJobs(olderThanMinutes = 30) {
     data: { status: "FAILED", error: "워커 중단으로 작업이 완료되지 않았습니다. 다시 실행해 주세요.", finishedAt: new Date() },
   });
 }
+
+/** 수동(복사·붙여넣기) 입력을 기다리는 상태로 멈춤 */
+export async function waitForManual(id: string, title: string) {
+  const job = await db.job.findUnique({ where: { id }, select: { log: true } });
+  const line = `[${new Date().toLocaleTimeString("ko-KR", { hour12: false })}] ✋ 수동 입력 대기: ${title} — [수동 작업함]에서 지시문을 복사해 결과를 붙여 넣으세요.\n`;
+  await db.job.update({ where: { id }, data: { status: "WAITING", log: (job?.log ?? "") + line } });
+}
+
+/** 붙여 넣은 결과가 저장되면 같은 작업을 다시 실행 (저장된 답을 사용) */
+export async function resumeJob(id: string) {
+  await db.job.update({ where: { id }, data: { status: "QUEUED", runAt: new Date(), error: null } });
+}

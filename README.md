@@ -41,14 +41,14 @@
 | **멀티 계정** | 블로거 N개(계정마다 다른 구글 아이디 가능)·네이버 N개·SNS N개. 계정별 콘셉트·광고 설정·분석 설정 |
 | **자동화** | 워커가 매주 주제 발굴, 매일 분석 동기화·발전 제안 갱신 (cron 설정 가능) |
 
-## 빠른 시작 (데모 모드 — API 키 없이 체험)
+## 빠른 시작 (데모 모드 — AI 연결 없이 체험)
 
 필요: **Node.js 22 이상**
 
 ```bash
 npm install
 npx playwright install chromium     # 썸네일·카드뉴스 렌더링, 네이버 자동화용 브라우저
-cp .env.example .env
+cp .env.example .env                 # 데모로 먼저 보려면 .env 에서 LLM_PROVIDER="mock"
 npm run setup                        # DB 생성 + 브랜드 설정·데모 계정·샘플 제휴상품
 npm run dev                          # 웹(3000) + 워커 동시 실행
 ```
@@ -62,10 +62,39 @@ http://localhost:3000 접속 → **주제 발굴 → 원고 생성 → 비공개
 
 `.env` 에 필요한 키를 넣고 재시작하면, 키가 있는 기능부터 자동으로 실제 모드로 바뀝니다. 대시보드 **[설정]** 에서 연동 상태를 확인할 수 있습니다.
 
-### 1) 글쓰기 AI (필수)
-- **Claude**: https://console.anthropic.com → API 키 → `ANTHROPIC_API_KEY` (기본 모델 `claude-opus-5`, 원고 전 웹 검색으로 사실 확인)
-- **Gemini**: https://aistudio.google.com → API 키 → `GEMINI_API_KEY` (Google 검색 그라운딩, **이미지 생성**에도 사용)
-- 둘 다 넣으면 글은 Claude, 이미지는 Gemini 를 씁니다. `LLM_PROVIDER` 로 강제 지정 가능.
+### 1) 글쓰기 AI — 추가 요금 없이 (권장)
+
+API 키 방식(`ANTHROPIC_API_KEY`)은 **Claude 구독(Pro/Max)과 별개로 사용량만큼 과금**됩니다. 이미 구독 중이라면 아래 조합으로 API 요금 0원 운영이 가능합니다.
+
+| 작업 | 기본 담당 | 비용 |
+|---|---|---|
+| 원고·섹션 다시 쓰기·AI 사실 검수 | **Claude Code (구독 로그인)** | 추가 요금 없음 · 구독 사용 한도 사용 |
+| 최신 정보 조사 (웹 검색) | **Claude Code (구독)** | 〃 |
+| 주제 기획 문구·카드뉴스·발전 제안 요약 | **로컬 Ollama** (예: `gemma4:12b`) | 무료 · 무제한 |
+| 구독 한도 초과·미설치·오프라인 | **수동 모드** 자동 전환 | 무료 (지시문 복사 → 데스크탑 Claude → 결과 붙여넣기) |
+| (선택) API 키 | Claude / Gemini API | 사용량만큼 과금 |
+
+**Claude Code (구독) 설정** — 맥미니에서 한 번만
+1. https://claude.com/claude-code 안내대로 설치 → 터미널에서 `claude` 실행 → `/login` → **구독 계정(Claude.ai)** 으로 로그인
+2. `npm run check:ai` → "구독 로그인으로 응답 성공" 이 나오면 끝
+- 이 프로그램은 Claude Code 를 실행할 때 `ANTHROPIC_API_KEY` 등 API 과금 경로의 환경변수를 **자동으로 빼고** 실행합니다(키가 `.env` 에 있어도 구독으로만 동작).
+- 원고 작성 때는 Claude Code 의 도구(파일·명령 실행)를 모두 끄고, 조사 때만 웹 검색·웹 페이지 읽기를 허용합니다. 빈 임시 폴더에서 실행해 프로젝트 파일을 건드리지 않습니다.
+- 구독 한도는 데스크탑 앱·Claude Code 와 **함께** 씁니다. 원고 1편 ≈ 조사 1회 + 작성 1회. 한도를 아끼려면 `CLAUDE_CODE_MODEL=sonnet`(기본) 유지.
+
+**Ollama (로컬) 설정**
+1. https://ollama.com 설치 → `ollama pull gemma4:12b` (이미 있으면 생략)
+2. Ollama 앱이 켜져 있으면 가벼운 작업이 자동으로 로컬로 갑니다. 24GB 메모리 기준 `OLLAMA_NUM_CTX=16384` 권장.
+- 로컬 12B 모델은 웹 검색이 안 되고 긴 원고에서 규칙 누락이 생기기 쉬워 **원고 본문은 맡기지 않는 것**을 권장합니다(원하면 `LLM_WRITE=ollama`).
+
+**수동 모드** — Claude Code 가 없거나 한도가 찼을 때
+- AI 가 필요한 단계에서 작업이 멈추고 **✋ 수동 작업함**(`/manual`)과 원고 화면에 카드가 뜹니다.
+- **📋 지시문 복사** → 데스크탑 Claude 에 붙여 넣기(웹 검색 켜기 권장) → 받은 답을 그대로 **결과 붙여넣기**. 앞뒤 설명·코드블록이 섞여도 JSON 만 골라 검증하고, 틀린 곳은 한국어로 알려 줍니다.
+- 붙여 넣으면 이미지·점검·비공개 발행 준비는 자동으로 이어집니다.
+
+**작업별 지정** — `.env` 의 `LLM_WRITE` · `LLM_RESEARCH` · `LLM_LIGHT` (`claude-code | ollama | manual | anthropic | gemini | mock`), 실패 시 전환 `LLM_FALLBACK`(기본 manual).
+비워 두면 자동: Claude Code 설치됨 → 구독, Ollama 실행 중 → 가벼운 작업은 로컬, 둘 다 없으면 API 키 → 수동. 대시보드 **[설정] → AI 담당 · 비용**에서 현재 배정과 연결 상태를 확인할 수 있습니다.
+
+- 이미지는 화면 캡처·무료 스톡(Unsplash/Pexels)·템플릿으로 만들어 0원입니다. `GEMINI_API_KEY` 를 넣은 경우에만 AI 이미지 생성을 씁니다.
 
 ### 2) 주제 발굴 데이터 (강력 권장)
 - **네이버 개발자센터** (https://developers.naver.com) → 애플리케이션 등록 → 검색·데이터랩(검색어트렌드) 사용 → `NAVER_CLIENT_ID/SECRET`
@@ -155,6 +184,7 @@ storage/                    생성 이미지·네이버 세션 (git 제외)
 ## 개발
 
 ```bash
+npm run check:ai  # 작업별 담당 AI·비용, Claude Code 로그인·Ollama 응답 확인 (--quick: 연결만)
 npm test          # 단위 테스트 (점수화·SEO 점검·렌더링·유사도·CSV·발전 제안 규칙)
 npm run typecheck
 npm run build

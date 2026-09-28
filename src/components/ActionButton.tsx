@@ -59,11 +59,12 @@ export async function waitJobs(ids: string[], onProgress?: (pct: number) => void
   for (;;) {
     const res = await fetch(`/api/jobs?ids=${ids.join(",")}`);
     const { jobs } = (await res.json()) as { jobs: { status: string; progress: number; error?: string }[] };
-    const done = jobs.every((j) => j.status === "DONE" || j.status === "FAILED");
+    const done = jobs.every((j) => j.status === "DONE" || j.status === "FAILED" || j.status === "WAITING");
     onProgress?.(Math.round(jobs.reduce((a, j) => a + j.progress, 0) / Math.max(1, jobs.length)));
     if (done) {
       const failed = jobs.find((j) => j.status === "FAILED");
       if (failed) throw new Error(`작업 실패: ${failed.error?.split("\n")[0] ?? ""}`);
+      if (jobs.some((j) => j.status === "WAITING")) return "WAITING" as const;
       return;
     }
     await new Promise((r) => setTimeout(r, 1500));

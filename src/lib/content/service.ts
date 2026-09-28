@@ -11,6 +11,7 @@ import { similarity, SIMILARITY_WARN } from "./similarity";
 import { ManuscriptSchema, type Manuscript, type Platform } from "./types";
 import { normalizeKeyword } from "../topics/scoring";
 import { detectRisk, manuscriptRiskText } from "./risk";
+import { ManualPendingError } from "../llm/manual";
 
 export type AccountSettings = {
   adsenseClientId?: string;
@@ -198,6 +199,10 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
     await ctx?.progress(100, `SEO 점수 ${report.score}점`);
     return { postId, seoScore: report.score };
   } catch (e) {
+    if (e instanceof ManualPendingError) {
+      await db.post.update({ where: { id: postId }, data: { status: "WAITING_MANUAL", error: null } });
+      throw e;
+    }
     await db.post.update({ where: { id: postId }, data: { status: "FAILED", error: (e as Error).message } });
     throw e;
   }

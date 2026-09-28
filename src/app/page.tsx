@@ -6,7 +6,7 @@ import { TrafficChart, RevenueChart, SourceBars } from "@/components/Charts";
 import { Badge, PageHeader, PLATFORM, Stat, ScoreBar } from "@/components/ui";
 import { formatKRW, formatNumber } from "@/lib/util";
 import { INSIGHT_TYPE, REVENUE_SOURCE } from "@/lib/labels";
-import { activeProvider } from "@/lib/llm";
+import { costLabel, providerLabel, routeFor } from "@/lib/llm";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +19,7 @@ export default async function Home() {
     db.topic.findMany({ where: { status: "NEW", verification: { not: "UNVERIFIED" } }, orderBy: [{ confidence: "desc" }, { totalScore: "desc" }], take: 5 }),
     db.insight.findMany({ where: { status: "OPEN" }, orderBy: [{ priority: "asc" }, { createdAt: "desc" }], take: 5 }),
   ]);
+  const [writeP, lightP, manualPending] = await Promise.all([routeFor("write"), routeFor("light"), db.manualRequest.count({ where: { status: "PENDING" } })]);
   const pv = series.reduce((a, p) => a + p.pageviews, 0);
   const rev = series.reduce((a, p) => a + p.revenue, 0);
   const pv7 = series.slice(-7).reduce((a, p) => a + p.pageviews, 0);
@@ -36,10 +37,19 @@ export default async function Home() {
           </>
         }
       />
-      {activeProvider() === "mock" && (
+      {writeP === "mock" ? (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          현재 <b>데모 모드</b>입니다. AI 키 없이 샘플 원고로 전체 흐름을 체험할 수 있어요. 실제 원고를 만들려면 <code>.env</code> 에
-          ANTHROPIC_API_KEY 또는 GEMINI_API_KEY 를 넣고 다시 실행하세요. (<Link className="underline" href="/settings">설정 확인</Link>)
+          현재 <b>데모 모드</b>(LLM_PROVIDER=mock)입니다. 샘플 원고로 전체 흐름을 체험할 수 있어요. 실제 원고는 Claude 구독(Claude Code)·로컬 Ollama·수동 모드로
+          추가 비용 없이 만들 수 있어요. (<Link className="underline" href="/settings">설정 확인</Link>)
+        </div>
+      ) : (
+        <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm text-indigo-900">
+          <span>✍️ 원고: <b>{providerLabel(writeP)}</b> <span className="text-xs text-indigo-700/80">({costLabel(writeP)})</span></span>
+          <span>⚡ 가벼운 작업: <b>{providerLabel(lightP)}</b></span>
+          {manualPending > 0 && (
+            <Link href="/manual" className="rounded-full bg-amber-100 px-3 py-0.5 font-medium text-amber-800 hover:bg-amber-200">✋ 수동 입력 대기 {manualPending}건</Link>
+          )}
+          <Link href="/settings" className="ml-auto text-xs text-indigo-600 underline">AI 설정·점검</Link>
         </div>
       )}
 

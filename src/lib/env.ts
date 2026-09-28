@@ -46,7 +46,7 @@ export const env = {
 /** 대시보드 설정 화면에서 보여줄 연동 상태 */
 export function integrationStatus() {
   return [
-    { key: "llm", label: "글쓰기 AI (Claude / Gemini)", ok: !!(env.anthropicKey || env.geminiKey), hint: "ANTHROPIC_API_KEY 또는 GEMINI_API_KEY" },
+    { key: "llm", label: "AI API 키 (선택 · 사용량 과금)", ok: !!(env.anthropicKey || env.geminiKey), hint: "없어도 됩니다 — Claude 구독(Claude Code)·로컬 Ollama·수동 모드로 0원 운영. 넣으면 ANTHROPIC_API_KEY / GEMINI_API_KEY" },
     { key: "imagegen", label: "AI 이미지 생성 (Gemini)", ok: !!env.geminiKey, hint: "GEMINI_API_KEY" },
     { key: "stock", label: "스톡 이미지 검색 (Unsplash / Pexels)", ok: !!(env.unsplashKey || env.pexelsKey), hint: "UNSPLASH_ACCESS_KEY / PEXELS_API_KEY" },
     { key: "naverOpen", label: "네이버 검색·데이터랩 API", ok: !!env.naverOpenApi, hint: "NAVER_CLIENT_ID / NAVER_CLIENT_SECRET" },

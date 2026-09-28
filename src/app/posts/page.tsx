@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 const FILTERS = [
   ["ALL", "전체"],
   ["GENERATING", "생성 중"],
+  ["WAITING_MANUAL", "수동 입력 대기"],
   ["DRAFT", "원고 완료"],
   ["PRIVATE", "검수 대기"],
   ["APPROVED", "승인됨"],

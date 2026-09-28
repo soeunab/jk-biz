@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 export const POST_STATUS: Record<string, { label: string; cls: string }> = {
   GENERATING: { label: "생성 중", cls: "bg-blue-50 text-blue-700" },
+  WAITING_MANUAL: { label: "수동 입력 대기", cls: "bg-amber-100 text-amber-800" },
   DRAFT: { label: "원고 완료", cls: "bg-gray-100 text-gray-700" },
   PRIVATE: { label: "비공개 발행 · 검수 대기", cls: "bg-amber-50 text-amber-700" },
   APPROVED: { label: "승인됨", cls: "bg-indigo-50 text-indigo-700" },

@@ -18,6 +18,17 @@ export default function GuidePage() {
     <div className="flex flex-col gap-5">
       <PageHeader title="사용 가이드" desc="처음 쓰시는 분을 위한 운영 안내. 기능이 바뀌면 이 페이지도 같이 업데이트됩니다." />
 
+      <Section title="0. AI 비용 — 추가 요금 없이 쓰기">
+        <p>API 키 방식은 Claude 구독과 <b>별개로 사용량만큼 과금</b>됩니다. 구독 중이라면 API 키 없이 아래처럼 나눠 씁니다. 현재 배정은 <Link className="text-indigo-600" href="/settings">설정 → AI 담당 · 비용</Link>에서 확인하세요.</p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li><b>원고·조사·사실 검수</b> → 맥미니의 <b>Claude Code</b>(구독 로그인). 추가 요금 없이 구독 사용 한도만 씁니다. 터미널에서 <code>claude</code> → <code>/login</code> 한 번이면 됩니다.</li>
+          <li><b>주제 기획 문구·카드뉴스·발전 제안 요약</b> → <b>로컬 Ollama</b>(gemma4:12b). 무료·무제한이라 구독 한도를 아낍니다.</li>
+          <li><b>구독 한도가 찼거나 Claude Code 가 꺼져 있으면</b> → 작업이 <b>✋ 수동 입력 대기</b>로 멈춥니다. <Link className="text-indigo-600" href="/manual">수동 작업함</Link>에서 📋 지시문 복사 → 데스크탑 Claude 에 붙여 넣기(웹 검색 켜기) → 받은 답을 그대로 붙여 넣으면 나머지는 자동으로 이어집니다.</li>
+          <li>이미지는 화면 캡처·무료 스톡·템플릿으로 만들어 0원입니다.</li>
+        </ul>
+        <p className="text-xs text-gray-500">연결 확인: 설정 화면의 🔌 연결 점검 / 💬 응답 테스트, 또는 터미널에서 <code>npm run check:ai</code>.</p>
+      </Section>
+
       <Section title="1. 하루 운영 순서">
         <ol className="list-decimal space-y-1 pl-5">
           <li><Link className="text-indigo-600" href="/">대시보드</Link>에서 검수 대기 원고를 확인합니다.</li>

@@ -14,6 +14,8 @@ import { RepublishButton } from "@/components/RepublishButton";
 import { AiReviewCard } from "@/components/AiReviewCard";
 import { getBrand } from "@/lib/brand";
 import { readinessIssues } from "@/lib/content/readiness";
+import { ManualTaskCard } from "@/components/ManualTaskCard";
+import { pendingManualTasks } from "@/lib/manualTasks";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +52,7 @@ export default async function PostPage({ params, searchParams }: { params: Promi
     .slice(0, 5);
   const busy = post.status === "GENERATING" || jobs.some((j) => j.status === "QUEUED" || j.status === "RUNNING");
   const stepIndex = STEPS.findIndex((s) => s.key === post.status);
+  const manualTasks = await pendingManualTasks({ postId: id });
   const partners = accountSettings(post.account?.settings).republishPartnerIds ?? [];
   const republishTargets = (
     await db.account.findMany({ where: { active: true, platform: { in: ["BLOGGER", "NAVER"] }, id: { not: post.accountId ?? "" } }, select: { id: true, name: true, platform: true } })
@@ -134,6 +137,8 @@ export default async function PostPage({ params, searchParams }: { params: Promi
           {m && post.status !== "GENERATING" && <RepublishButton postId={id} accounts={republishTargets} />}
         </div>
       </div>
+
+      {manualTasks.map((t) => <ManualTaskCard key={t.id} {...t} link={undefined} />)}
 
       {issues.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">

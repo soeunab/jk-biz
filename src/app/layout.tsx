@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 import { providerLabel } from "@/lib/llm";
+import { db } from "@/lib/db";
 
 export const metadata: Metadata = {
   title: "지원포유 콘텐츠 스튜디오",
@@ -18,11 +19,13 @@ const NAV = [
   { href: "/accounts", label: "계정 관리", icon: "👥" },
   { href: "/affiliates", label: "수익화 상품", icon: "🛍️" },
   { href: "/settings", label: "설정", icon: "⚙️" },
+  { href: "/manual", label: "수동 작업함", icon: "✋" },
   { href: "/jobs", label: "작업 로그", icon: "🧾" },
   { href: "/guide", label: "사용 가이드", icon: "📘" },
 ];
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const manualCount = await db.manualRequest.count({ where: { status: "PENDING" } }).catch(() => 0);
   return (
     <html lang="ko">
       <body>
@@ -37,10 +40,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link key={n.href} href={n.href} className="rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700">
                   <span className="mr-2">{n.icon}</span>
                   {n.label}
+                  {n.href === "/manual" && manualCount > 0 && <span className="ml-2 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">{manualCount}</span>}
                 </Link>
               ))}
             </nav>
-            <div className="mt-auto px-2 text-[11px] text-gray-400">글쓰기 AI: {providerLabel()}</div>
+            <div className="mt-auto px-2 text-[11px] text-gray-400">원고 AI: {providerLabel()}</div>
           </aside>
           <div className="flex-1">
             <nav className="flex gap-1 overflow-x-auto border-b border-gray-200 bg-white px-3 py-2 md:hidden">

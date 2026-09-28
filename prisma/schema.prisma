@@ -295,3 +295,28 @@ model Setting {
   value     Json
   updatedAt DateTime @updatedAt
 }
+
+/// 수동(복사·붙여넣기) 모드 요청 — 지시문을 데스크탑 Claude 등에 붙여 넣고 결과를 받아 이어서 진행
+model ManualRequest {
+  id         String   @id @default(cuid())
+  /// 작업ID:호출순번 — 같은 작업을 다시 실행하면 저장된 답을 사용
+  key        String   @unique
+  jobId      String
+  jobType    String
+  /// 스키마 이름 (src/lib/llm/schemas.ts)
+  schemaName String
+  title      String
+  system     String
+  prompt     String
+  schemaJson Json?
+  postId     String?
+  cardNewsId String?
+  /// PENDING | DONE | CANCELED
+  status     String   @default("PENDING")
+  response   Json?
+  error      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status])
+}

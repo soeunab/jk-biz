@@ -29,6 +29,9 @@ export async function generateManuscript(
 
   await opts.log?.("원고 작성 중…");
   const manuscript = await generateJson({
+    name: "manuscript",
+    task: "write",
+    title: `원고: ${brief.title ?? brief.keyword} (${brief.platform === "NAVER" ? "네이버" : "블로거"})`,
     system: buildSystemPrompt(brand, brief.platform),
     prompt: buildUserPrompt({ ...brief, today, researchNotes, researchSources }),
     schema: ManuscriptSchema,

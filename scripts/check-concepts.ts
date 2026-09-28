@@ -1,20 +1,25 @@
 /**
  * 계정 콘셉트 차별화 확인 — 같은 키워드를 두 콘셉트로 각각 원고 생성해 제목·관점·예시·유사도를 비교합니다.
  * 사용법: npm run check:concepts -- "제미나이 보고서" "직장인 업무 자동화 후기형" "1인 가구 생활비 절약형" [NAVER|BLOGGER]
- * AI 키(ANTHROPIC_API_KEY 또는 GEMINI_API_KEY)가 있어야 의미 있는 결과가 나옵니다. (조사 단계는 비용 절약을 위해 생략)
+ * Claude Code(구독)·Ollama·API 키 중 하나가 있어야 합니다 (수동 모드는 대화형이라 이 스크립트에서 쓸 수 없음). 조사 단계는 한도 절약을 위해 생략.
  */
 import "./load-env";
 import { generateManuscript } from "../src/lib/content/generate";
 import { manuscriptText } from "../src/lib/content/render";
 import { similarity, SIMILARITY_WARN } from "../src/lib/content/similarity";
-import { activeProvider, providerLabel } from "../src/lib/llm";
+import { providerLabel, routeFor } from "../src/lib/llm";
 import { db } from "../src/lib/db";
 
 async function main() {
   const [keyword = "제미나이 보고서 작성", conceptA = "직장인 업무 자동화 후기형 — 보고서·회의록 실전 템플릿", conceptB = "1인 가구 생활 AI — 장보기·가계부·행정 처리", platformArg = "NAVER"] = process.argv.slice(2);
   const platform = platformArg === "BLOGGER" ? "BLOGGER" : "NAVER";
-  console.log(`글쓰기 AI: ${providerLabel()} · 키워드 "${keyword}" · ${platform}\n`);
-  if (activeProvider() === "mock") console.log("⚠️ 데모(mock) 모드라 콘셉트와 무관한 샘플 원고가 나옵니다. .env 에 AI 키를 넣고 다시 실행하세요.\n");
+  const provider = await routeFor("write");
+  console.log(`글쓰기 AI: ${providerLabel(provider)} · 키워드 "${keyword}" · ${platform}\n`);
+  if (provider === "mock") console.log("⚠️ 데모(mock) 모드라 콘셉트와 무관한 샘플 원고가 나옵니다. LLM_PROVIDER 를 비우고 Claude Code 로그인 또는 Ollama 를 준비하세요.\n");
+  if (provider === "manual") {
+    console.log("⚠️ 수동 모드에서는 이 스크립트를 쓸 수 없어요. Claude Code(구독) 로그인 또는 LLM_WRITE=ollama 로 실행하세요.");
+    process.exit(1);
+  }
 
   const results = [];
   for (const concept of [conceptA, conceptB]) {

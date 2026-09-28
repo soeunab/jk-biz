@@ -26,7 +26,7 @@ const VERIFICATION_LABEL: Record<Verification, string> = { VERIFIED: "공식데�
 
 const PERSONA_MODIFIERS = ["사용법", "무료", "활용법", "프롬프트", "업무", "보고서", "직장인", "프리랜서", "1인 가구", "비교"];
 
-const IdeaSchema = z.object({
+export const IdeaSchema = z.object({
   ideas: z.array(
     z.object({
       keyword: z.string().describe("대표 검색 키워드 (후보 목록에서 선택)"),
@@ -152,6 +152,9 @@ export async function discoverTopics(opts: DiscoverOptions, ctx?: JobContext) {
     .join("\n");
 
   const { ideas } = await generateJson({
+    name: "topicIdeas",
+    task: "light",
+    title: `주제 기획 (${fresh.length}개 후보)`,
     system: `당신은 한국 블로그 수익화(애드센스·애드포스트·쇼핑커넥트) 전문 콘텐츠 기획자입니다.
 브랜드: ${brand.name} — ${brand.mission}
 독자 페르소나:

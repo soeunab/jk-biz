@@ -101,7 +101,7 @@ export function ruleInsights(
   return out;
 }
 
-const StrategySchema = z.object({
+export const StrategySchema = z.object({
   summary: z.string().describe("이번 기간 성과 요약 2~3문장"),
   directions: z.array(z.object({ title: z.string(), body: z.string(), priority: z.number().int() })).describe("발전 방향 3~5개"),
 });
@@ -133,6 +133,9 @@ export async function generateInsights(ctx?: JobContext) {
   const clusters = [...clusterViews].sort((a, b) => b[1] - a[1]).slice(0, 6);
 
   const strategy = await generateJson({
+    name: "strategy",
+    task: "light",
+    title: "발전 제안 요약",
     system: `당신은 ${brand.name} 블로그 사업의 그로스 컨설턴트입니다. 데이터에 근거해 구체적이고 실행 가능한 발전 방향을 제시하세요. 브랜드 미션: ${brand.mission}`,
     prompt: `최근 30일 데이터입니다.
 - 발행 글 ${kpi.publishedPosts}개, 조회수 ${kpi.pageviews}, 수익 ${Math.round(kpi.revenue)}원

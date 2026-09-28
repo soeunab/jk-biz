@@ -10,6 +10,7 @@ import { saveMedia } from "../storage";
 import { readManuscript } from "../content/service";
 import type { JobContext } from "../jobs/queue";
 import { escapeHtml, truncateWords } from "../util";
+import { ManualPendingError } from "../llm/manual";
 
 export const SlideSchema = z.object({
   type: z.enum(["cover", "point", "list", "quote", "cta"]),
@@ -30,7 +31,7 @@ export const CaptionsSchema = z.object({
 });
 export type Captions = z.infer<typeof CaptionsSchema>;
 
-const CardNewsSchema = z.object({ title: z.string(), slides: z.array(SlideSchema), captions: CaptionsSchema });
+export const CardNewsSchema = z.object({ title: z.string(), slides: z.array(SlideSchema), captions: CaptionsSchema });
 
 export const THEMES = {
   brand: { bg: "linear-gradient(160deg,#1e1b4b 0%,#312e81 55%,#6d28d9 100%)", fg: "#ffffff", accent: "#facc15", card: "rgba(255,255,255,.08)", sub: "rgba(255,255,255,.8)" },
@@ -90,6 +91,9 @@ export async function runGenerateCardNews(cardNewsId: string, ctx?: JobContext) 
       : `주제: ${card.title}`;
 
     const result = await generateJson({
+      name: "cardnews",
+      task: "light",
+      title: `카드뉴스: ${card.title}`,
       system: `당신은 인스타그램 카드뉴스 에디터입니다. 브랜드: ${brand.name} — ${brand.mission}
 원칙: 첫 장은 스크롤을 멈추게 하는 훅, 한 장에 메시지 하나, 짧고 쉬운 문장, 마지막 장은 저장·팔로우·블로그 방문 유도.`,
       prompt: `아래 블로그 원고를 카드뉴스 7장으로 만들어 주세요. 구성: cover 1장 → point/list 4~5장 → quote 또는 요약 1장 → cta 1장.
@@ -125,6 +129,10 @@ ${source}`,
     await ctx?.log("카드뉴스 렌더링 완료");
     return { slides: result.slides.length };
   } catch (e) {
+    if (e instanceof ManualPendingError) {
+      await db.cardNews.update({ where: { id: cardNewsId }, data: { status: "WAITING_MANUAL", error: null } });
+      throw e;
+    }
     await db.cardNews.update({ where: { id: cardNewsId }, data: { status: "FAILED", error: (e as Error).message } });
     throw e;
   }
