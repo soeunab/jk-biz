@@ -55,6 +55,7 @@ export function mockManuscript(b: {
   tool?: string;
   today: string;
   affiliateProducts?: { id: string; name: string }[];
+  republishOf?: { title: string };
 }): Manuscript {
   const tool = b.tool || "Gemini";
   const p = PERSONAS[b.persona];
@@ -127,6 +128,10 @@ export function mockManuscript(b: {
       image: img(4, "ai", "minimal illustration of a shield and checklist representing safe AI usage, no text", `${tool} 안전하게 사용하는 법`),
     },
   ];
+
+  if (b.republishOf) {
+    sections[2].body += `\n\n도구별 설정 화면은 {{원본링크}}에 더 자세히 정리해 뒀어요.`;
+  }
 
   return {
     title: b.title ?? `${k} 완벽 정리 — ${josa(p.label, "을/를")} 위한 ${year} 실전 가이드`,

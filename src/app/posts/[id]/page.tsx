@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { readManuscript, researchNotesOf } from "@/lib/content/service";
+import { accountSettings, readManuscript, researchNotesOf } from "@/lib/content/service";
 import type { SeoReport } from "@/lib/content/seo";
 import { ActionButton } from "@/components/ActionButton";
 import { AutoRefresh } from "@/components/AutoRefresh";
@@ -10,6 +10,7 @@ import { ManuscriptEditor } from "@/components/ManuscriptEditor";
 import { ReviewPanel, MarkPublished } from "@/components/ReviewPanel";
 import { Badge, PLATFORM, POST_STATUS } from "@/components/ui";
 import { ApproveButton, RejectButton } from "@/components/ApproveButton";
+import { RepublishButton } from "@/components/RepublishButton";
 import { AiReviewCard } from "@/components/AiReviewCard";
 import { getBrand } from "@/lib/brand";
 import { readinessIssues } from "@/lib/content/readiness";
@@ -30,7 +31,14 @@ export default async function PostPage({ params, searchParams }: { params: Promi
   const tab = (await searchParams).tab ?? "preview";
   const post = await db.post.findUnique({
     where: { id },
-    include: { account: true, topic: true, assets: { where: { kind: { not: "CARD_SLIDE" } }, orderBy: { order: "asc" } }, cardNews: true },
+    include: {
+      account: true,
+      topic: true,
+      assets: { where: { kind: { not: "CARD_SLIDE" } }, orderBy: { order: "asc" } },
+      cardNews: true,
+      source: { select: { id: true, title: true, platform: true, remoteUrl: true, account: { select: { name: true } } } },
+      republishes: { select: { id: true, title: true, platform: true, status: true, account: { select: { name: true } } } },
+    },
   });
   if (!post) notFound();
   const m = readManuscript(post.content);
@@ -42,7 +50,13 @@ export default async function PostPage({ params, searchParams }: { params: Promi
     .slice(0, 5);
   const busy = post.status === "GENERATING" || jobs.some((j) => j.status === "QUEUED" || j.status === "RUNNING");
   const stepIndex = STEPS.findIndex((s) => s.key === post.status);
-  const issues = m && ["DRAFT", "PRIVATE", "APPROVED"].includes(post.status) ? readinessIssues(m, { brand: await getBrand(), similarity: report?.similarity, renderedHtml: post.html, researchNotes: researchNotesOf(post.research) }) : [];
+  const partners = accountSettings(post.account?.settings).republishPartnerIds ?? [];
+  const republishTargets = (
+    await db.account.findMany({ where: { active: true, platform: { in: ["BLOGGER", "NAVER"] }, id: { not: post.accountId ?? "" } }, select: { id: true, name: true, platform: true } })
+  )
+    .map((a) => ({ ...a, partner: partners.includes(a.id) }))
+    .sort((a, b) => Number(b.partner) - Number(a.partner));
+  const issues = m && ["DRAFT", "PRIVATE", "APPROVED"].includes(post.status) ? readinessIssues(m, { brand: await getBrand(), similarity: report?.similarity, renderedHtml: post.html, researchNotes: researchNotesOf(post.research), republish: (post.seoReport as { republish?: null | { sourceTitle: string; sourceUrl: string | null; similarity: number; warn: boolean } } | null)?.republish ?? null, accountConcept: post.account ? post.account.concept : undefined }) : [];
   const demo = (post.account?.settings as { demo?: boolean } | null)?.demo;
 
   return (
@@ -58,6 +72,27 @@ export default async function PostPage({ params, searchParams }: { params: Promi
         <h1 className="mt-2 text-2xl font-bold">{post.title || post.focusKeyword}</h1>
         {post.remoteUrl && (
           <a href={post.remoteUrl} target="_blank" className="text-xs text-indigo-600 underline">{post.remoteUrl}</a>
+        )}
+        {post.source && (
+          <div className="mt-2 text-xs">
+            <span className="badge bg-violet-50 text-violet-700">🔁 재발행</span>{" "}
+            원본: <Link className="text-indigo-600 underline" href={`/posts/${post.source.id}`}>{post.source.title}</Link>
+            <span className="text-gray-500"> ({post.source.platform === "NAVER" ? "네이버" : "블로거"} · {post.source.account?.name})</span>
+            {(post.seoReport as { republish?: { similarity: number } } | null)?.republish && (
+              <span className="ml-2 text-gray-500">원본과 유사도 {Math.round(((post.seoReport as { republish: { similarity: number } }).republish.similarity) * 100)}%</span>
+            )}
+          </div>
+        )}
+        {post.republishes.length > 0 && (
+          <div className="mt-2 text-xs text-gray-600">
+            🔁 이 글의 재발행:{" "}
+            {post.republishes.map((r, i) => (
+              <span key={r.id}>
+                {i > 0 && " · "}
+                <Link className="text-indigo-600 underline" href={`/posts/${r.id}`}>{r.account?.name ?? r.platform}</Link> ({r.status})
+              </span>
+            ))}
+          </div>
         )}
       </div>
 
@@ -96,6 +131,7 @@ export default async function PostPage({ params, searchParams }: { params: Promi
           {post.status !== "GENERATING" && (
             <ActionButton url={`/api/posts/${id}/action`} body={{ action: "cardnews" }} label="🖼️ 카드뉴스 만들기" />
           )}
+          {m && post.status !== "GENERATING" && <RepublishButton postId={id} accounts={republishTargets} />}
         </div>
       </div>
 

@@ -14,6 +14,14 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
   const status = sp.status ?? "NEW";
   const showAll = sp.all === "1";
   const verificationFilter = showAll ? {} : { verification: { not: "UNVERIFIED" } };
+  const sources = (
+    await db.post.findMany({
+      where: { status: { in: ["DRAFT", "PRIVATE", "APPROVED", "PUBLISHED"] } },
+      select: { id: true, title: true, platform: true, account: { select: { name: true } } },
+      orderBy: { updatedAt: "desc" },
+      take: 50,
+    })
+  ).map((p) => ({ id: p.id, title: p.title, platform: p.platform, account: p.account?.name ?? "-" }));
   const [topics, hidden, accounts, running] = await Promise.all([
     db.topic.findMany({ where: { status, ...verificationFilter }, orderBy: [{ confidence: "desc" }, { totalScore: "desc" }], take: 100 }),
     showAll ? Promise.resolve(0) : db.topic.count({ where: { status, verification: "UNVERIFIED" } }),
@@ -36,13 +44,13 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
         ))}
         <span className="mx-2 text-gray-300">|</span>
         <a href={`/topics?status=${status}${showAll ? "" : "&all=1"}`} className={`rounded-lg px-3 py-1.5 ${showAll ? "bg-gray-800 text-white" : "border bg-white text-gray-700"}`}>
-          {showAll ? "미검증 숨기기" : `미검증 포함${hidden ? ` (${hidden}개 숨김)` : ""}`}
+          {showAll ? "미검증 키워드 숨기기" : `미검증 키워드 포함 보기${hidden ? ` (${hidden}개 숨김)` : ""}`}
         </a>
       </div>
 
       {topics.length === 0 ? (
         <Empty>
-          {running ? "주제를 발굴하고 있어요…" : hidden ? `실제 검색 여부를 확인하지 못한 미검증 주제 ${hidden}개가 숨겨져 있어요. 네이버 API 키를 설정하거나 [미검증 포함]을 눌러 확인하세요.` : "주제가 없습니다. 위에서 [주제 발굴]을 눌러 보세요."}
+          {running ? "주제를 발굴하고 있어요…" : hidden ? `실제 검색 여부를 확인하지 못한 미검증 주제 ${hidden}개가 숨겨져 있어요. API 지연·실패로 검증을 놓친 후보도 [미검증 키워드 포함 보기]에서 직접 볼 수 있어요.` : "주제가 없습니다. 위에서 [주제 발굴]을 눌러 보세요."}
         </Empty>
       ) : (
         <div className="card overflow-x-auto p-0">
@@ -98,7 +106,7 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
         </div>
       )}
       <div className="grid gap-6 lg:grid-cols-2">
-        <ManualPostForm accounts={accounts} />
+        <ManualPostForm accounts={accounts} sources={sources} />
         <RelatedKeywords />
       </div>
       <p className="text-xs text-gray-500">

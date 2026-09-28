@@ -20,6 +20,10 @@ export function readinessIssues(
     renderedHtml?: string;
     researchNotes?: string | null;
     today?: string;
+    /** 재발행 원고: 원본과의 유사도·원본 URL */
+    republish?: { sourceTitle: string; sourceUrl: string | null; similarity: number; warn: boolean } | null;
+    /** 계정 콘셉트 (undefined 면 검사 안 함) */
+    accountConcept?: string | null;
   },
 ): ReadinessIssue[] {
   const issues: ReadinessIssue[] = [];
@@ -49,6 +53,21 @@ export function readinessIssues(
       id: "tense",
       message: `이미 벌어진 일을 미래형으로 쓴 것 같은 문장 ${tense.length}개: “${tense[0].sentence.slice(0, 50)}…” — ${tense[0].reason}`,
     });
+  }
+
+  if (ctx.republish) {
+    if (ctx.republish.warn) {
+      issues.push({
+        id: "republish-similar",
+        message: `재발행 원본 “${ctx.republish.sourceTitle}”와 ${Math.round(ctx.republish.similarity * 100)}% 비슷해요. 구글은 블로거·네이버 글을 모두 색인하므로 관점·구성·예시를 더 바꿔 주세요.`,
+      });
+    }
+    if (!ctx.republish.sourceUrl) {
+      issues.push({ id: "republish-no-url", message: `원본 “${ctx.republish.sourceTitle}”이(가) 아직 발행 전이라 백링크 주소가 없어요. 원본을 먼저 공개 발행하면 링크가 자동으로 들어갑니다.` });
+    }
+  }
+  if (ctx.accountConcept !== undefined && !ctx.accountConcept?.trim()) {
+    issues.push({ id: "concept-empty", message: "이 계정은 콘셉트가 비어 있어 다른 계정과 제목·관점이 비슷한 글이 나올 수 있어요. [계정 관리]에서 콘셉트를 적어 주세요." });
   }
 
   if (m.affiliate.length && !ctx.brand.disclosure.affiliate.trim()) {

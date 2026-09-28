@@ -34,7 +34,7 @@ export function CsvImport() {
         <button className="btn-secondary text-xs" onClick={() => setCsv(example)}>예시 채우기</button>
       </div>
       {(result || msg) && <p className="text-xs text-gray-600">{result ?? msg}</p>}
-      <p className="text-[11px] text-gray-400">네이버 애드포스트·쇼핑커넥트·블로그 통계는 공개 API 가 없어 CSV(엑셀에서 저장) 또는 직접 입력으로 반영합니다.</p>
+      <p className="text-[11px] text-gray-400">네이버 애드포스트·쇼핑커넥트·블로그 통계는 공개 API 가 없어 CSV(엑셀에서 저장) 또는 직접 입력으로 반영합니다. 애드포스트는 합산 정산되므로 <b>정산(대표) 계정</b>으로 한 번만 입력하면 묶인 계정들에 조회수 비중으로 자동 배분돼요.</p>
     </div>
   );
 }

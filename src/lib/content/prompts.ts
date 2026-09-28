@@ -101,6 +101,8 @@ export type BriefInput = {
   avoidTitles?: string[];
   /** 검색의도 (정보탐색형/탐색형/상업조사형/구매의도형) */
   intent?: Intent | string;
+  /** 크로스플랫폼 재발행 원본 (구조·핵심만 — 본문 전문은 전달하지 않음) */
+  republishOf?: { platform: Platform; accountName: string; title: string; headings: string[]; keyPoints: string[] };
   today: string;
 };
 
@@ -121,7 +123,7 @@ export function buildUserPrompt(b: BriefInput) {
 - 오늘 날짜: ${b.today} (시점 표기에 사용)
 - 검색의도: ${intentLabel} → 글 유형: ${recipe.label}
 - 권장 섹션 흐름(상황에 맞게 조정 가능): ${recipe.sections.join(" → ")}
-${b.accountConcept ? `- 이 블로그 계정의 콘셉트: ${b.accountConcept} (같은 주제라도 이 콘셉트에 맞는 관점·예시로 차별화)` : ""}
+${conceptRules(b.accountConcept)}
 ${b.avoidTitles?.length ? `- 이미 발행한 비슷한 글(제목·구성·예시가 겹치지 않게): ${b.avoidTitles.join(" / ")}` : ""}
 
 [최신 조사 메모 — 사실 확인에 활용, 없는 내용은 지어내지 말 것]
@@ -135,6 +137,36 @@ ${b.internalLinks?.length ? b.internalLinks.map((l) => `- ${l.title}: ${l.url}`)
 ${b.affiliateProducts?.length ? b.affiliateProducts.map((p) => `- id=${p.id} | ${p.name} | ${p.program} | 태그: ${p.tags}`).join("\n") : "(없음 — affiliate 는 빈 배열)"}
 
 ${riskPromptRules(risk)}
+${republishRules(b)}
 
 구성 필수 요소: directAnswer, tldr 3개, 섹션별 image(가능한 한), 비교가 필요하면 표, 프롬프트 예시 1개 이상(인용 형태 "> "), "[경험 추가: …]" 자리표시 1~3개, FAQ 4~6개, 결론과 CTA, reviewChecklist.`;
+}
+
+/** 원본 링크 자리표시 — 렌더러가 원본 글 링크로 바꿉니다. */
+export const SOURCE_LINK_TOKEN = "{{원본링크}}";
+
+/** 계정 콘셉트 차별화 규칙 — 같은 키워드라도 계정마다 다른 글이 나오도록 */
+export function conceptRules(concept?: string | null): string {
+  if (!concept?.trim()) return "- 이 블로그 계정의 콘셉트: (미설정 — 일반적인 관점으로 작성)";
+  return `- 이 블로그 계정의 콘셉트: ${concept.trim()}
+  · 제목: 이 콘셉트의 독자가 검색할 표현과 상황을 담아 다른 계정 글과 구별되게
+  · 관점: 이 콘셉트의 독자가 실제로 겪는 문제·목표를 중심으로 전개
+  · 예시: 모든 사례·프롬프트 예시를 이 콘셉트의 독자 상황으로 설정 (다른 독자층 예시 재사용 금지)`;
+}
+
+/** 크로스플랫폼 재발행 규칙 — 원본 복사 금지, 관점·구성·예시 새로 쓰기, 원본 백링크 */
+export function republishRules(b: Pick<BriefInput, "republishOf" | "platform">): string {
+  const r = b.republishOf;
+  if (!r) return "";
+  const from = r.platform === "NAVER" ? "네이버 블로그" : "구글 블로거";
+  const to = b.platform === "NAVER" ? "네이버 블로그" : "구글 블로거";
+  return `
+[크로스플랫폼 재발행 — 원본: ${from} "${r.title}" (${r.accountName})]
+- 이 글은 위 원본을 ${to} 독자용으로 다시 쓰는 글입니다. 원본을 그대로 복사하지 마세요 (검색엔진 중복 콘텐츠 페널티).
+- 원본의 제목·소제목·문장·예시·표를 재사용하지 말고, 이 플랫폼 독자에 맞게 관점·구성·예시를 새로 쓰세요.
+- 핵심 사실(수치·요금·절차)은 유지하되 표현과 전개 순서는 새로 만드세요.
+- 원본 소제목(이 흐름을 따르지 말고 다른 구성으로): ${r.headings.join(" / ")}
+- 원본 핵심: ${r.keyPoints.filter(Boolean).join(" / ")}
+- 본문 중 자연스러운 한 곳에서 원본 글을 한 번 언급하고, 링크 자리에 ${SOURCE_LINK_TOKEN} 를 그대로 적으세요.
+  예) "도구별 설정 화면은 ${SOURCE_LINK_TOKEN}에 더 자세히 정리해 뒀어요."`;
 }

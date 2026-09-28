@@ -22,7 +22,7 @@ export default async function PostsPage({ searchParams }: { searchParams: Promis
   const accounts = await db.account.findMany({ where: { platform: { in: ["BLOGGER", "NAVER"] } } });
   const posts = await db.post.findMany({
     where: { ...(status !== "ALL" ? { status } : {}), ...(sp.account ? { accountId: sp.account } : {}) },
-    include: { account: true, _count: { select: { assets: true, cardNews: true } } },
+    include: { account: true, source: { select: { title: true } }, _count: { select: { assets: true, cardNews: true } } },
     orderBy: { updatedAt: "desc" },
     take: 200,
   });
@@ -52,7 +52,7 @@ export default async function PostsPage({ searchParams }: { searchParams: Promis
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="max-w-md">
                     <Link href={`/posts/${p.id}`} className="font-medium hover:text-indigo-700">{p.title || p.focusKeyword}</Link>
-                    <div className="text-xs text-gray-500">{p.focusKeyword}{p._count.cardNews ? " · 🖼️ 카드뉴스" : ""}</div>
+                    <div className="text-xs text-gray-500">{p.focusKeyword}{p._count.cardNews ? " · 🖼️ 카드뉴스" : ""}{p.source ? ` · 🔁 재발행(원본: ${p.source.title.slice(0, 20)}…)` : ""}</div>
                     {p.error && <div className="mt-1 line-clamp-1 text-xs text-red-600">{p.error}</div>}
                   </td>
                   <td><Badge map={PLATFORM} value={p.platform} /><div className="mt-1 text-xs text-gray-500">{p.account?.name ?? "계정 미지정"}</div></td>

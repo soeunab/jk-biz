@@ -17,7 +17,7 @@ type Action = "regenerate" | "images" | "publishPrivate" | "approve" | "publishP
 export const POST = handle(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const id = (await params).id;
   const { action, url, force, reason } = (await req.json()) as { action: Action; url?: string; force?: boolean; reason?: string };
-  const post = await db.post.findUniqueOrThrow({ where: { id } });
+  const post = await db.post.findUniqueOrThrow({ where: { id }, include: { account: true } });
 
   switch (action) {
     case "regenerate": {
@@ -34,7 +34,7 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
       if (post.status !== "PRIVATE") return fail("비공개 발행(검수 대기) 상태에서만 승인할 수 있어요.");
       const m = readManuscript(post.content);
       const sim = (post.seoReport as { similarity?: { warn: boolean; max: number; with: { title: string } | null } } | null)?.similarity;
-      const issues = m ? readinessIssues(m, { brand: await getBrand(), similarity: sim, renderedHtml: post.html, researchNotes: researchNotesOf(post.research) }) : [];
+      const issues = m ? readinessIssues(m, { brand: await getBrand(), similarity: sim, renderedHtml: post.html, researchNotes: researchNotesOf(post.research), republish: (post.seoReport as { republish?: null | { sourceTitle: string; sourceUrl: string | null; similarity: number; warn: boolean } } | null)?.republish ?? null, accountConcept: post.account ? post.account.concept : undefined }) : [];
       // 확인 사유가 있으면 한 번 알려 주고, 검수자가 확인한 뒤(force) 승인
       if (issues.length && !force) return ok({ needsConfirm: true, issues: issues.map((i) => i.message) });
       await db.post.update({ where: { id }, data: { status: "APPROVED", reviewerNote: issues.length ? `${post.reviewerNote}\n[승인 시 확인한 사유] ${issues.map((i) => i.message).join(" / ")}`.trim() : post.reviewerNote } });

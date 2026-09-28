@@ -45,10 +45,14 @@ export function AddAccount() {
   );
 }
 
-type Settings = { adsenseClientId?: string; adsenseSlotId?: string; ga4PropertyId?: string; gscSiteUrl?: string; publishMode?: string };
+type Settings = { adsenseClientId?: string; adsenseSlotId?: string; ga4PropertyId?: string; gscSiteUrl?: string; publishMode?: string; adpostMasterId?: string; republishPartnerIds?: string[] };
+type Other = { id: string; name: string; platform: string };
 
-export function AccountSettingsForm({ id, platform, concept, externalId, url, settings }: { id: string; platform: string; concept: string; externalId: string; url: string; settings: Settings }) {
+export function AccountSettingsForm({ id, platform, concept, externalId, url, settings, others = [] }: { id: string; platform: string; concept: string; externalId: string; url: string; settings: Settings; others?: Other[] }) {
   const [f, setF] = useState({ concept, externalId, url, ...settings, accessToken: "" });
+  const [partners, setPartners] = useState<string[]>(settings.republishPartnerIds ?? []);
+  const blogOthers = others.filter((o) => o.id !== id && ["BLOGGER", "NAVER"].includes(o.platform));
+  const naverOthers = others.filter((o) => o.id !== id && o.platform === "NAVER");
   const { busy, msg, submit } = useSubmit();
   const save = () =>
     submit(`/api/accounts/${id}`, {
@@ -56,7 +60,15 @@ export function AccountSettingsForm({ id, platform, concept, externalId, url, se
       externalId: f.externalId,
       url: f.url,
       accessToken: f.accessToken || undefined,
-      settings: { adsenseClientId: f.adsenseClientId, adsenseSlotId: f.adsenseSlotId, ga4PropertyId: f.ga4PropertyId, gscSiteUrl: f.gscSiteUrl, publishMode: f.publishMode },
+      settings: {
+        adsenseClientId: f.adsenseClientId,
+        adsenseSlotId: f.adsenseSlotId,
+        ga4PropertyId: f.ga4PropertyId,
+        gscSiteUrl: f.gscSiteUrl,
+        publishMode: f.publishMode,
+        ...(platform === "NAVER" ? { adpostMasterId: f.adpostMasterId || "" } : {}),
+        ...(["BLOGGER", "NAVER"].includes(platform) ? { republishPartnerIds: partners } : {}),
+      },
     }, "PATCH");
   const inp = (k: keyof typeof f, label: string, ph = "") => (
     <div><label className="label">{label}</label><input className="input text-xs" value={(f[k] as string) ?? ""} placeholder={ph} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></div>
@@ -75,6 +87,29 @@ export function AccountSettingsForm({ id, platform, concept, externalId, url, se
             {inp("ga4PropertyId", "GA4 속성 ID (숫자)", "123456789")}
             {inp("gscSiteUrl", "서치콘솔 속성", "https://xxx.blogspot.com/")}
           </>
+        )}
+        {platform === "NAVER" && (
+          <div>
+            <label className="label">애드포스트 정산 계정</label>
+            <select className="input text-xs" value={f.adpostMasterId ?? ""} onChange={(e) => setF({ ...f, adpostMasterId: e.target.value })}>
+              <option value="">이 계정 (단독 정산)</option>
+              {naverOthers.map((o) => <option key={o.id} value={o.id}>{o.name}의 애드포스트에 미디어로 묶임</option>)}
+            </select>
+            <p className="mt-1 text-[11px] text-gray-400">묶인 계정들의 애드포스트 수익은 합산 후 조회수 비중으로 나눠 계정별 RPM 을 계산해요.</p>
+          </div>
+        )}
+        {["BLOGGER", "NAVER"].includes(platform) && blogOthers.length > 0 && (
+          <div className="md:col-span-2">
+            <label className="label">재발행 짝 계정 (의도적으로 같은 주제를 공유 — 콘셉트 겹침 경고 예외, 재발행 시 기본 선택)</label>
+            <div className="flex flex-wrap gap-2">
+              {blogOthers.map((o) => (
+                <label key={o.id} className={`cursor-pointer rounded-lg border px-2 py-1 text-xs ${partners.includes(o.id) ? "border-violet-500 bg-violet-50" : ""}`}>
+                  <input type="checkbox" className="mr-1" checked={partners.includes(o.id)} onChange={(e) => setPartners(e.target.checked ? [...partners, o.id] : partners.filter((x) => x !== o.id))} />
+                  {o.platform === "NAVER" ? "🟢" : "🟠"} {o.name}
+                </label>
+              ))}
+            </div>
+          </div>
         )}
         {platform === "NAVER" && (
           <div>

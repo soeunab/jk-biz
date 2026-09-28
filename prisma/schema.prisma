@@ -83,6 +83,10 @@ model Post {
   topic           Topic?    @relation(fields: [topicId], references: [id], onDelete: SetNull)
   accountId       String?
   account         Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  /// 크로스플랫폼 재발행(리라이팅)의 원본 글 — 원본 링크를 백링크로 넣고, 원본과 너무 비슷하면 경고
+  sourcePostId    String?
+  source          Post?     @relation("Republish", fields: [sourcePostId], references: [id], onDelete: SetNull)
+  republishes     Post[]    @relation("Republish")
   /// BLOGGER | NAVER
   platform        String
   /// GENERATING | DRAFT | PRIVATE(비공개 발행/임시저장 완료, 검수 대기) | APPROVED | PUBLISHED | REJECTED(반려) | FAILED

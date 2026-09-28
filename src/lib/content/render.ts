@@ -18,7 +18,31 @@ export type RenderOptions = {
   placeholders?: "highlight" | "strip";
   /** 고위험 주제 고지 문구 (risk.ts) */
   riskDisclaimers?: string[];
+  /** 크로스플랫폼 재발행 원본 (url 은 원본이 발행된 뒤에만 있음) */
+  sourceLink?: { title: string; url?: string };
 };
+
+const SOURCE_TOKEN = "{{원본링크}}";
+
+function sourceAnchor(o: RenderOptions) {
+  const s = o.sourceLink!;
+  return s.url ? `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.title)}</a>` : `“${escapeHtml(s.title)}”`;
+}
+
+/** 본문에 원본 링크 자리({{원본링크}})가 있으면 링크로 바꾸고, 없으면 false 를 돌려 자동 삽입하게 합니다. */
+function applySourceLink(html: string, o: RenderOptions) {
+  if (!o.sourceLink) return html.replaceAll(SOURCE_TOKEN, "");
+  return html.replaceAll(SOURCE_TOKEN, sourceAnchor(o));
+}
+
+function manuscriptHasSourceToken(m: Manuscript) {
+  return JSON.stringify(m).includes(SOURCE_TOKEN);
+}
+
+/** 본문에서 원본을 언급하지 않았을 때 결론 앞에 넣는 자연스러운 백링크 문장 */
+function sourceLinkParagraph(o: RenderOptions) {
+  return `<p>📎 이 주제를 다른 관점에서 정리한 글도 있어요: ${sourceAnchor(o)}</p>`;
+}
 
 /** 자리표시 처리 — 발행본에 "[경험 추가…]" 문구가 새어 나가지 않게 합니다. */
 export function applyPlaceholders(html: string, mode: "highlight" | "strip" = "strip") {
@@ -106,6 +130,7 @@ export function renderBlogger(m: Manuscript, o: RenderOptions): string {
     if (i === midIndex) out.push(adsenseUnit(o.adsense));
   });
 
+  if (o.sourceLink && !manuscriptHasSourceToken(m)) out.push(sourceLinkParagraph(o));
   out.push(`<h2 id="faq">자주 묻는 질문 (FAQ)</h2>`);
   for (const f of m.faq) out.push(`<h3>Q. ${escapeHtml(f.q)}</h3><p>${escapeHtml(f.a)}</p>`);
   out.push(`<h2>마무리</h2>`, md(m.conclusion), `<p><b>${escapeHtml(m.cta)}</b></p>`);
@@ -122,7 +147,7 @@ export function renderBlogger(m: Manuscript, o: RenderOptions): string {
     `<div style="border-top:1px solid #e5e7eb;margin-top:28px;padding-top:14px;font-size:14px;color:#4b5563;"><b>작성·검수: ${escapeHtml(o.brand.authorName)}</b> — ${escapeHtml(o.brand.authorBio)}<br/>최종 업데이트: ${date}<br/><span style="font-size:12px;">${escapeHtml(o.brand.disclosure.ai)}</span></div>`,
   );
   out.push(jsonLd(m, o, date));
-  return applyPlaceholders(out.filter(Boolean).join("\n"), o.placeholders);
+  return applySourceLink(applyPlaceholders(out.filter(Boolean).join("\n"), o.placeholders), o);
 }
 
 function jsonLd(m: Manuscript, o: RenderOptions, date: string) {
@@ -161,7 +186,7 @@ export function renderNaverSegments(m: Manuscript, o: RenderOptions): NaverSegme
   const products = new Map((o.products ?? []).map((p) => [p.id, p]));
   let buf: string[] = [];
   const flush = () => {
-    const html = applyPlaceholders(buf.join(""), o.placeholders);
+    const html = applySourceLink(applyPlaceholders(buf.join(""), o.placeholders), o);
     if (html.trim()) segs.push({ type: "html", html });
     buf = [];
   };
@@ -197,6 +222,7 @@ export function renderNaverSegments(m: Manuscript, o: RenderOptions): NaverSegme
     }
   });
 
+  if (o.sourceLink && !manuscriptHasSourceToken(m)) buf.push(sourceLinkParagraph(o));
   buf.push(`<p><br></p><h3><b>자주 묻는 질문</b></h3>`);
   for (const f of m.faq) buf.push(`<p><b>Q. ${escapeHtml(f.q)}</b></p><p>A. ${escapeHtml(f.a)}</p><p><br></p>`);
   buf.push(simpleMd(m.conclusion), `<p><b>${escapeHtml(m.cta)}</b></p>`);

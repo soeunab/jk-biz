@@ -14,7 +14,7 @@ export function hasInvestDisclaimer(text: string): boolean {
   return /투자\s?(권유|권고)(가|를)?\s?(아닙|아니|아님|하지\s?않)/.test(plain) && /(책임|판단)[^.。]{0,20}(본인|투자자)/.test(plain);
 }
 
-const RULES: { cat: RiskCategory; label: string; re: RegExp; disclaimer: string }[] = [
+const RULES: { cat: RiskCategory; label: string; re: RegExp; caseSensitive?: RegExp; disclaimer: string }[] = [
   {
     cat: "TAX",
     label: "세무",
@@ -24,7 +24,10 @@ const RULES: { cat: RiskCategory; label: string; re: RegExp; disclaimer: string 
   {
     cat: "INVEST",
     label: "투자·재테크",
-    re: /(주식|주가|종목|증시|코스피|코스닥|나스닥|배당|공모주|매수|매도|코인|가상자산|비트코인|펀드|etf|재테크|투자\s?(상품|방법|수익|종목|전략|포트폴리오))/i,
+    // 종목명 없이 실적·배당·공시만 언급해도 투자 주제로 봄. 단독 "실적"(업무 실적 등)은 제외하고 분기·발표와 결합된 경우만.
+    re: /(주식|주가|종목|증시|코스피|코스닥|나스닥|배당|공모주|매수|매도|코인|가상자산|비트코인|펀드|etf|재테크|투자\s?(상품|방법|수익|종목|전략|포트폴리오)|실적\s?(발표|시즌|전망|공개)|어닝|([1-4]\s?분기|연간|반기|잠정|분기)\s?실적|공시(?!하듯|처럼)|dart|목표\s?주가|시가\s?총액|시총|상장\s?(예정|폐지|일)|ipo|자사주|주주\s?(총회|환원))/i,
+    // 투자 지표 약어는 대문자일 때만 ("per 인원" 같은 일반 영어 오탐 방지)
+    caseSensitive: /\b(PER|PBR|EPS|ROE)\b/,
     disclaimer: INVEST_DISCLAIMER,
   },
   {
@@ -81,7 +84,7 @@ export function manuscriptRiskText(m: { focusKeyword: string; title: string; sec
 }
 
 export function detectRisk(text: string): RiskResult | null {
-  const hits = RULES.filter((r) => r.re.test(text));
+  const hits = RULES.filter((r) => r.re.test(text) || r.caseSensitive?.test(text));
   if (!hits.length) return null;
   return { categories: hits.map((h) => h.cat), labels: hits.map((h) => h.label), disclaimers: hits.map((h) => h.disclaimer) };
 }

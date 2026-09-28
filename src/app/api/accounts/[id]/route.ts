@@ -17,6 +17,21 @@ export const PATCH = handle(async (req: Request, { params }: Ctx) => {
   if (b.concept !== undefined) data.concept = b.concept;
   if (b.active !== undefined) data.active = b.active;
   if (b.settings) data.settings = { ...asObject<Record<string, unknown>>(account.settings, {}), ...b.settings } as Prisma.InputJsonValue;
+  // 재발행 짝은 양방향 관계 — 상대 계정 설정에도 반영
+  const nextPartners = b.settings?.republishPartnerIds as string[] | undefined;
+  if (Array.isArray(nextPartners)) {
+    const prev = (asObject<{ republishPartnerIds?: string[] }>(account.settings, {}).republishPartnerIds ?? []) as string[];
+    const changed = [...new Set([...prev, ...nextPartners])].filter((pid) => pid !== id);
+    for (const pid of changed) {
+      const other = await db.account.findUnique({ where: { id: pid } });
+      if (!other) continue;
+      const os = asObject<Record<string, unknown>>(other.settings, {});
+      const list = new Set((os.republishPartnerIds as string[] | undefined) ?? []);
+      if (nextPartners.includes(pid)) list.add(id);
+      else list.delete(id);
+      await db.account.update({ where: { id: pid }, data: { settings: { ...os, republishPartnerIds: [...list] } as Prisma.InputJsonValue } });
+    }
+  }
   if (b.accessToken) data.credentials = encryptJson({ ...(decryptJson(account.credentials) ?? {}), accessToken: b.accessToken.trim() });
   if (b.disconnect) data.credentials = null;
   await db.account.update({ where: { id }, data });

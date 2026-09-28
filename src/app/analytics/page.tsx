@@ -60,15 +60,31 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="card lg:col-span-2 overflow-x-auto">
-          <h2 className="mb-3 font-semibold">계정별 성과</h2>
+          <h2 className="mb-1 font-semibold">계정별 성과</h2>
+          <p className="mb-3 text-xs text-gray-500">같은 애드포스트로 묶인 네이버 계정들은 합산 수익을 조회수 비중으로 나눠 표시해요 (계정 관리 → 애드포스트 정산 계정).</p>
           <table className="table">
-            <thead><tr><th>계정</th><th>발행(기간)</th><th>조회수</th><th>수익</th><th>RPM</th></tr></thead>
+            <thead><tr><th>계정</th><th>발행(기간)</th><th>조회수</th><th>애드포스트(배분)</th><th>총 수익</th><th>RPM</th></tr></thead>
             <tbody>
               {accounts.map((a) => (
                 <tr key={a.id}>
                   <td><Badge map={PLATFORM} value={a.platform} /> <span className="ml-1">{a.name}</span></td>
                   <td className="tabular-nums">{a.published} ({a.publishedRecent})</td>
                   <td className="tabular-nums">{formatNumber(a.pageviews)}</td>
+                  <td className="text-xs">
+                    {a.adpost ? (
+                      <>
+                        <span className="tabular-nums">{formatKRW(a.adpost.allocated)}</span>
+                        {a.adpost.groupSize > 1 && (
+                          <div className="text-gray-500">
+                            {a.adpost.groupName} 그룹 {formatKRW(a.adpost.groupRevenue)} × 조회수 {(a.adpost.share * 100).toFixed(0)}%
+                          </div>
+                        )}
+                        {a.adpost.note && <div className="text-amber-600">{a.adpost.note}</div>}
+                      </>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
                   <td className="tabular-nums">{formatKRW(a.revenue)}</td>
                   <td className="tabular-nums">{a.pageviews ? formatKRW(a.rpm) : "-"}</td>
                 </tr>

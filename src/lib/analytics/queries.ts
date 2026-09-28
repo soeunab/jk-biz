@@ -1,5 +1,7 @@
 import { db } from "../db";
 import { daysAgo, ymd } from "../util";
+import { allocateAdpost } from "./adpost";
+import { accountSettings } from "../content/service";
 
 const VIEW_SOURCES = ["GA4", "NAVER", "MANUAL"];
 
@@ -98,18 +100,34 @@ export async function postPerformance(days = 28): Promise<PostPerf[]> {
     .sort((a, b) => b.pageviews - a.pageviews);
 }
 
+/**
+ * 계정별 성과. 네이버 애드포스트는 같은 정산 그룹(대표 계정의 "미디어"로 묶인 계정들)의 수익을 합산한 뒤
+ * 조회수 비중으로 배분합니다 — 각 계정을 독립 수익원으로 계산하지 않습니다.
+ */
 export async function accountPerformance(days = 30) {
   const since = daysAgo(days);
   const accounts = await db.account.findMany({
     where: { platform: { in: ["BLOGGER", "NAVER"] } },
     include: {
       posts: { select: { status: true, publishedAt: true, metrics: { where: { date: { gte: since } }, select: { source: true, pageviews: true } } } },
-      revenues: { where: { date: { gte: since } }, select: { amount: true } },
+      revenues: { where: { date: { gte: since } }, select: { amount: true, source: true } },
     },
   });
-  return accounts.map((a) => {
-    const pv = a.posts.flatMap((p) => p.metrics).filter((m) => VIEW_SOURCES.includes(m.source)).reduce((s, m) => s + m.pageviews, 0);
-    const revenue = a.revenues.reduce((s, r) => s + r.amount, 0);
+  const rows = accounts.map((a) => ({
+    a,
+    pv: a.posts.flatMap((p) => p.metrics).filter((m) => VIEW_SOURCES.includes(m.source)).reduce((s, m) => s + m.pageviews, 0),
+    adpost: a.revenues.filter((r) => r.source === "ADPOST").reduce((s, r) => s + r.amount, 0),
+    other: a.revenues.filter((r) => r.source !== "ADPOST").reduce((s, r) => s + r.amount, 0),
+  }));
+  const allocation = allocateAdpost(
+    rows
+      .filter((r) => r.a.platform === "NAVER")
+      .map((r) => ({ accountId: r.a.id, name: r.a.name, masterId: accountSettings(r.a.settings).adpostMasterId || null, pageviews: r.pv, adpostRevenue: r.adpost })),
+  );
+  return rows.map(({ a, pv, adpost, other }) => {
+    const alloc = allocation.get(a.id);
+    const adpostRevenue = alloc ? alloc.allocated : adpost;
+    const revenue = other + adpostRevenue;
     return {
       id: a.id,
       name: a.name,
@@ -118,6 +136,7 @@ export async function accountPerformance(days = 30) {
       publishedRecent: a.posts.filter((p) => p.publishedAt && p.publishedAt >= since).length,
       pageviews: pv,
       revenue,
+      adpost: alloc && alloc.groupRevenue > 0 ? { ...alloc } : null,
       rpm: pv ? (revenue / pv) * 1000 : 0,
     };
   });

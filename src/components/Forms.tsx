@@ -21,6 +21,9 @@ export function useSubmit() {
       const ids: string[] = data.jobIds ?? (data.jobId ? [data.jobId] : []);
       if (ids.length) await waitJobs(ids, (p) => setMsg(`처리 중… ${p}%`));
       setMsg(data.ok === undefined && data.errors ? `완료 ${data.ok}건` : null);
+      // 생성은 진행하되 알아야 할 점(콘셉트 미설정·중복으로 건너뜀 등)은 이동 전에 알려 줌
+      const notes = [...(data.warnings ?? []), ...(data.skipped ?? [])];
+      if (notes.length) window.alert(notes.join("\n"));
       if (data.redirect) router.push(data.redirect);
       router.refresh();
       return data;
@@ -114,8 +117,9 @@ export function GenerateFromTopic({ topicId, accounts, defaultPlatform }: { topi
   );
 }
 
-export function ManualPostForm({ accounts }: { accounts: AccountOpt[] }) {
+export function ManualPostForm({ accounts, sources = [] }: { accounts: AccountOpt[]; sources?: { id: string; title: string; account: string; platform: string }[] }) {
   const { busy, msg, submit } = useSubmit();
+  const [sourcePostId, setSourcePostId] = useState("");
   const [keyword, setKeyword] = useState("");
   const [title, setTitle] = useState("");
   const [persona, setPersona] = useState("OFFICE");
@@ -125,7 +129,7 @@ export function ManualPostForm({ accounts }: { accounts: AccountOpt[] }) {
       className="card flex flex-col gap-3"
       onSubmit={(e) => {
         e.preventDefault();
-        submit("/api/posts", { keyword, title, persona, accountIds: sel });
+        submit("/api/posts", { keyword, title, persona, accountIds: sel, sourcePostId: sourcePostId || undefined });
       }}
     >
       <h2 className="font-semibold">키워드로 바로 원고 만들기</h2>
@@ -148,9 +152,20 @@ export function ManualPostForm({ accounts }: { accounts: AccountOpt[] }) {
           </select>
         </div>
       </div>
+      {sources.length > 0 && (
+        <div>
+          <label className="label">재발행 원본 (선택) — 지정하면 원본의 주제·키워드를 이어받아 다른 계정용으로 새로 씁니다</label>
+          <select className="input" value={sourcePostId} onChange={(e) => setSourcePostId(e.target.value)}>
+            <option value="">(없음 — 새 글)</option>
+            {sources.map((p) => (
+              <option key={p.id} value={p.id}>{p.platform === "NAVER" ? "🟢" : "🟠"} {p.account} · {p.title}</option>
+            ))}
+          </select>
+        </div>
+      )}
       <AccountPicker accounts={accounts} value={sel} onChange={setSel} />
       <div>
-        <button className="btn-primary" disabled={busy || !keyword || !sel.length}>{busy && <Spinner />}✍️ 원고 생성</button>
+        <button className="btn-primary" disabled={busy || (!keyword && !sourcePostId) || !sel.length}>{busy && <Spinner />}✍️ 원고 생성</button>
         {msg && <span className="ml-3 text-xs text-gray-500">{msg}</span>}
       </div>
     </form>

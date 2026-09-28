@@ -33,7 +33,7 @@ describe("rule insights", () => {
   });
 
   it("warns about cadence and review backlog", () => {
-    const out = ruleInsights([], [{ id: "acc", name: "네이버1", platform: "NAVER", published: 2, publishedRecent: 2, pageviews: 0, revenue: 0, rpm: 0 }], [
+    const out = ruleInsights([], [{ id: "acc", name: "네이버1", platform: "NAVER", published: 2, publishedRecent: 2, pageviews: 0, revenue: 0, adpost: null, rpm: 0 }], [
       { id: "x", title: "오래된 검수", privateAt: new Date(Date.now() - 5 * 86_400_000) },
     ]);
     expect(out.map((o) => o.type)).toEqual(expect.arrayContaining(["CADENCE", "GENERAL"]));

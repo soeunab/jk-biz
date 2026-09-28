@@ -20,6 +20,11 @@ export type AccountSettings = {
   /** 네이버: private(비공개 발행) | draft(임시저장) */
   publishMode?: "private" | "draft";
   naverCategory?: string;
+  /** 네이버: 애드포스트 수익이 합산 정산되는 정산(대표) 계정 ID. 비우면 자기 자신 */
+  adpostMasterId?: string;
+  /** 크로스플랫폼 재발행 짝 계정 — 의도적으로 같은 주제를 공유 (콘셉트 겹침 경고 예외) */
+  republishPartnerIds?: string[];
+  demo?: boolean;
 };
 
 export function accountSettings(v: unknown): AccountSettings {
@@ -37,6 +42,22 @@ export function readManuscript(v: unknown): Manuscript | null {
   return parsed.success ? parsed.data : null;
 }
 
+/** 같은 계정에 (정규화 기준) 같은 키워드 원고가 이미 있으면 그 원고 */
+async function findDuplicate(accountId: string, norm: string) {
+  return db.post.findFirst({
+    where: { accountId, normalizedKeyword: norm, status: { notIn: ["FAILED", "REJECTED"] } },
+    include: { account: { select: { name: true } } },
+  });
+}
+
+/** 원고 생성 전에 알려줄 경고 (콘셉트 미설정 등) — 생성을 막지는 않습니다. */
+export async function generationWarnings(accountIds: string[]) {
+  const accounts = await db.account.findMany({ where: { id: { in: accountIds } }, select: { name: true, concept: true } });
+  return accounts
+    .filter((a) => !a.concept.trim())
+    .map((a) => `"${a.name}" 계정은 콘셉트가 비어 있어요. 다른 계정과 제목·관점이 비슷하게 나올 수 있으니 [계정 관리]에서 콘셉트를 적어 주세요.`);
+}
+
 /**
  * 주제 하나로 플랫폼·계정별 원고 작업을 만듭니다.
  * 같은 계정에 (정규화 기준) 같은 키워드 원고가 이미 있으면 만들지 않고 건너뜁니다 — 발굴을 여러 번 돌려도 중복 원고가 쌓이지 않게.
@@ -48,10 +69,7 @@ export async function createPostsFromTopic(topicId: string, targets: { platform:
   const skipped: string[] = [];
   for (const t of targets) {
     if (t.accountId) {
-      const dup = await db.post.findFirst({
-        where: { accountId: t.accountId, normalizedKeyword: norm, status: { notIn: ["FAILED", "REJECTED"] } },
-        include: { account: { select: { name: true } } },
-      });
+      const dup = await findDuplicate(t.accountId, norm);
       if (dup) {
         skipped.push(`${dup.account?.name ?? "계정"}: 이미 "${dup.title || dup.focusKeyword}" 원고가 있어요`);
         continue;
@@ -65,6 +83,42 @@ export async function createPostsFromTopic(topicId: string, targets: { platform:
   }
   if (posts.length) await db.topic.update({ where: { id: topicId }, data: { status: "USED" } });
   return { posts, skipped };
+}
+
+/**
+ * 크로스플랫폼 재발행: 다른 계정·플랫폼의 글을 원본으로 지정해 새 원고를 만듭니다.
+ * 원본의 주제·키워드를 이어받되, 생성 시 "복사 금지·관점/구성/예시 새로 쓰기" 규칙과 원본 백링크가 적용됩니다.
+ */
+export async function createRepublish(sourceId: string, accountId: string) {
+  const source = await db.post.findUniqueOrThrow({ where: { id: sourceId }, include: { topic: true } });
+  if (!readManuscript(source.content)) throw new Error("원본 원고가 아직 완성되지 않았어요.");
+  const account = await db.account.findUniqueOrThrow({ where: { id: accountId } });
+  if (!["BLOGGER", "NAVER"].includes(account.platform)) throw new Error("블로그 계정만 재발행 대상이 될 수 있어요.");
+  if (account.id === source.accountId) throw new Error("원본과 같은 계정에는 재발행할 수 없어요.");
+  const norm = source.normalizedKeyword || normalizeKeyword(source.focusKeyword);
+  const dup = await findDuplicate(account.id, norm);
+  if (dup) throw new Error(`${dup.account?.name ?? "계정"}: 이미 "${dup.title || dup.focusKeyword}" 원고가 있어요`);
+  const post = await db.post.create({
+    data: {
+      topicId: source.topicId,
+      sourcePostId: source.id,
+      platform: account.platform,
+      accountId: account.id,
+      title: source.topic?.title ?? source.title,
+      focusKeyword: source.topic?.keyword ?? source.focusKeyword,
+      normalizedKeyword: norm,
+      status: "GENERATING",
+    },
+  });
+  await enqueue("post.generate", { postId: post.id });
+  return { post, warnings: await generationWarnings([account.id]) };
+}
+
+/** 원본 링크 표시용 정보 (URL 은 원본이 발행된 뒤에 생김) */
+async function sourceLinkOf(sourcePostId: string | null) {
+  if (!sourcePostId) return null;
+  const src = await db.post.findUnique({ where: { id: sourcePostId }, include: { account: { select: { name: true } } } });
+  return src ? { id: src.id, title: src.title, url: src.remoteUrl ?? undefined, platform: src.platform, accountName: src.account?.name ?? "", content: src.content } : null;
 }
 
 /** 워커: 원고 생성 → 이미지 → 렌더링 → SEO 점검 */
@@ -91,6 +145,8 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
       where: { topicId: post.topicId ?? "__none__", id: { not: postId } },
       select: { title: true },
     });
+    const source = await sourceLinkOf(post.sourcePostId);
+    const sourceM = source ? readManuscript(source.content) : null;
 
     const { manuscript, research } = await generateManuscript(
       {
@@ -105,6 +161,17 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
         internalLinks: internal.map((p) => ({ title: p.title, url: p.remoteUrl! })),
         affiliateProducts: products.map((p) => ({ id: p.id, name: p.name, program: p.program, tags: p.tags })),
         avoidTitles: siblings.map((s) => s.title).filter(Boolean),
+        republishOf:
+          source && sourceM
+            ? {
+                platform: source.platform as Platform,
+                accountName: source.accountName,
+                title: sourceM.title,
+                // 본문 전문은 주지 않습니다 — 구조·핵심만 알려 복사 여지를 줄임
+                headings: sourceM.sections.map((s) => s.heading),
+                keyPoints: [sourceM.directAnswer, ...sourceM.tldr],
+              }
+            : undefined,
       },
       { log },
     );
@@ -165,7 +232,10 @@ export async function rerenderPost(postId: string, opts: { forPublish?: boolean;
     canonicalUrl: post.remoteUrl ?? undefined,
     placeholders: opts.forPublish ? "strip" : "highlight",
     riskDisclaimers: detectRisk(manuscriptRiskText(m))?.disclaimers,
+    sourceLink: undefined,
   };
+  const source = await sourceLinkOf(post.sourcePostId);
+  if (source) ro.sourceLink = { title: source.title, url: source.url };
 
   const platform = post.platform as Platform;
   const html = platform === "BLOGGER" ? renderBlogger(m, ro) : renderNaverPreview(renderNaverSegments(m, ro));
@@ -196,7 +266,17 @@ export async function rerenderPost(postId: string, opts: { forPublish?: boolean;
     if (s > maxSim) [maxSim, simWith] = [s, { id: o.id, title: o.title }];
   }
 
-  const seoReport = { ...report, similarity: { max: Math.round(maxSim * 100) / 100, with: simWith, warn: maxSim >= SIMILARITY_WARN } };
+  // 재발행 원고는 플랫폼이 달라도 원본과 직접 비교 — 구글은 블로거·네이버 글을 모두 색인하므로 거의 같은 글은 중복 콘텐츠 위험
+  const sourceM = source ? readManuscript(source.content) : null;
+  const republish =
+    source && sourceM
+      ? (() => {
+          const s = similarity(text, manuscriptText(sourceM));
+          return { sourceId: source.id, sourceTitle: source.title, sourceUrl: source.url ?? null, similarity: Math.round(s * 100) / 100, warn: s >= SIMILARITY_WARN };
+        })()
+      : null;
+
+  const seoReport = { ...report, similarity: { max: Math.round(maxSim * 100) / 100, with: simWith, warn: maxSim >= SIMILARITY_WARN }, republish };
   if (!opts.forPublish) {
     await db.post.update({ where: { id: postId }, data: { html, seoScore: report.score, seoReport: seoReport as unknown as Prisma.InputJsonValue } });
   }
