@@ -1,0 +1,54 @@
+[
+  {"channel": "google_trends", "source": "구글 트렌드 실시간 인기(24시간)", "title": "고기", "url": "https://trends.google.com/trends/explore?q=%EA%B3%A0%EA%B8%B0&geo=KR", "rank": 17, "growth_pct": 1000, "volume": 5000, "age_minutes": 60, "category": "비즈니스·경제", "extra": {"related": ["돼지고기 원산지", "김치"], "categories": ["비즈니스·경제"], "fresh": true, "status": "활성"}},
+  {"channel": "naver_ranking", "source": "경제 섹션", "title": "명절 앞둔 원산지 표시위반 단속서 최다적발은 '김치·돼지고기'", "url": "https://n.news.naver.com/mnews/article/001/0016336707", "rank": 3, "category": "비즈니스·경제", "press": "연합뉴스", "extra": {"kind": "section_headline"}},
+  {"channel": "naver_ranking", "source": "뉴스 랭킹(종합)", "title": "으악! 내가 뭘 먹은 거야…김치·돼지고기 '이렇게 팔았어?'", "url": "https://n.news.naver.com/article/015/0005336135?ntype=RANKING", "rank": 2, "press": "한국경제", "age_minutes": 300, "extra": {"kind": "press_rank"}},
+  {"channel": "nate", "source": "네이트 실시간 급상승 관심뉴스(시사)", "title": "으악! 내가 뭘 먹은 거야…김치·돼지고기 '이렇게 팔았어?'", "url": "https://news.nate.com/view/20260926n06101", "rank": 17, "extra": {"change": ""}},
+  {"channel": "daum", "source": "다음 경제", "title": "\"국산 아니었네?\"…원산지 표시 단속 최다 적발은 '김치·돼지고기'", "url": "https://v.daum.net/v/20260926170441111", "rank": 41, "category": "비즈니스·경제", "press": "아시아경제", "age_minutes": 44},
+
+  {"channel": "google_trends", "source": "구글 트렌드 실시간 인기(24시간)", "title": "자영업", "rank": 30, "growth_pct": 900, "volume": 2000, "age_minutes": 1320, "category": "비즈니스·경제", "extra": {"related": [], "categories": ["비즈니스·경제"]}},
+  {"channel": "naver_ranking", "source": "뉴스 랭킹(종합)", "title": "600원 아이스크림 팔아 얼마 남나…무인점포 ‘싼 창업’의 계산법 [자영업 리포트]", "url": "https://n.news.naver.com/article/020/0003750704?ntype=RANKING", "rank": 1, "press": "동아일보", "age_minutes": 420, "extra": {"kind": "press_rank"}},
+  {"channel": "daum", "source": "다음 경제", "title": "저축은행 자영업자 대출 4년 새 '반토막'...연체율은 3.6배 급등해 부실 악화", "url": "https://v.daum.net/v/20260926155908363", "rank": 23, "category": "비즈니스·경제", "press": "뉴스웨이", "age_minutes": 120},
+  {"channel": "google_news", "source": "구글 뉴스 비즈니스", "title": "\"4년새 저축은행 자영업자 대출잔액 절반 되고 연체율은 3.6배\"", "url": "https://news.google.com/rss/articles/abc", "rank": 31, "category": "비즈니스·경제", "press": "YTN", "age_minutes": 420, "cluster_size": 1},
+
+  {"channel": "naver_ranking", "source": "뉴스 랭킹(종합)", "title": "국내 기름값 19주 연속 하락…추석 연휴 고속도로 주유소도 100원↓", "url": "https://n.news.naver.com/article/138/0002242704?ntype=RANKING", "rank": 5, "press": "디지털데일리", "age_minutes": 120, "extra": {"kind": "press_rank"}},
+  {"channel": "naver_ranking", "source": "경제 섹션", "title": "주유소 기름값 19주 연속 하락…가격상한·추석 할인 영향", "url": "https://n.news.naver.com/mnews/article/119/0003136421", "rank": 5, "category": "비즈니스·경제", "press": "데일리안", "extra": {"kind": "section_headline"}},
+  {"channel": "daum", "source": "다음 경제", "title": "기름값 19주째 하락…고속도로 주유소 할인 등 영향", "url": "https://v.daum.net/v/20260926173609544", "rank": 61, "category": "비즈니스·경제", "press": "SBS", "age_minutes": 13},
+  {"channel": "google_news", "source": "구글 뉴스 비즈니스", "title": "전국 휘발유값 19주 연속 하락…추석 고속도로 할인도 영향 - 전자신문", "url": "https://news.google.com/rss/articles/def", "rank": 9, "category": "비즈니스·경제", "press": "전자신문", "age_minutes": 360, "cluster_size": 5},
+
+  {"channel": "google_trends", "source": "구글 트렌드 실시간 인기(24시간)", "title": "최태원", "rank": 24, "growth_pct": 1000, "volume": 10000, "age_minutes": 360, "extra": {"related": [], "categories": []}},
+  {"channel": "naver_ranking", "source": "뉴스 랭킹(종합)", "title": "‘최태원 동거인’ 김희영, 허위사실 유튜버에 또 승소… 1000만원 배상", "url": "https://n.news.naver.com/article/366/0001194470?ntype=RANKING", "rank": 1, "press": "조선비즈", "age_minutes": 60, "extra": {"kind": "press_rank"}},
+  {"channel": "naver_ranking", "source": "뉴스 랭킹(종합)", "title": "최태원 동거인 김희영, 허위사실 유튜버에 또 승소…1000만원 배상", "url": "https://n.news.naver.com/article/448/0000641518?ntype=RANKING", "rank": 1, "press": "TV조선", "age_minutes": 300, "extra": {"kind": "press_rank"}},
+  {"channel": "naver_ranking", "source": "뉴스 랭킹(종합)", "title": "최태원 '승부수'...역대급 IPO 온다", "url": "https://n.news.naver.com/article/050/0000111328?ntype=RANKING", "rank": 2, "press": "한경비즈니스", "age_minutes": 480, "extra": {"kind": "press_rank"}},
+  {"channel": "nate", "source": "네이트 실시간 급상승 관심뉴스(시사)", "title": "최태원 동거인 김희영, 허위사실 비방 유튜버에 또 이겼다…1000만원 받는다 [세상&]", "url": "https://news.nate.com/view/20260926n02572", "rank": 13, "extra": {"change": ""}},
+
+  {"channel": "google_trends", "source": "구글 트렌드 실시간 인기(24시간)", "title": "수도권 광역급행철도 c노선", "rank": 19, "growth_pct": 1000, "volume": 2000, "age_minutes": 60, "category": "비즈니스·경제", "extra": {"related": [], "categories": ["비즈니스·경제"]}},
+
+  {"channel": "google_trends", "source": "구글 트렌드 실시간 인기(24시간)", "title": "스타벅스", "rank": 40, "growth_pct": 1000, "volume": 5000, "age_minutes": 1260, "category": "비즈니스·경제", "extra": {"related": [], "categories": ["비즈니스·경제"]}},
+  {"channel": "naver_ranking", "source": "뉴스 랭킹(종합)", "title": "\"스타벅스에 무슨 일이\"...파격 결정에 '술렁'", "url": "https://n.news.naver.com/article/050/0000111319?ntype=RANKING", "rank": 3, "press": "한경비즈니스", "age_minutes": 1440, "extra": {"kind": "press_rank"}},
+
+  {"channel": "naver_ranking", "source": "뉴스 랭킹(종합)", "title": "‘적자 기업’서 200조 몸값으로…SK하닉 솔리다임, 내년 美 상장 시동", "url": "https://n.news.naver.com/article/123/0002390838?ntype=RANKING", "rank": 3, "press": "조세일보", "age_minutes": 600, "extra": {"kind": "press_rank"}},
+  {"channel": "naver_ranking", "source": "뉴스 랭킹(종합)", "title": "SK하이닉스 솔리다임, 내년 美 상장 추진...기업가치 최대 204조", "url": "https://n.news.naver.com/article/024/0000108492?ntype=RANKING", "rank": 5, "press": "매경이코노미", "age_minutes": 360, "extra": {"kind": "press_rank"}},
+  {"channel": "google_news", "source": "구글 뉴스 비즈니스", "title": "외신發 솔리다임 美 IPO說 재점화···SK하이닉스 중복상장 추진하나", "url": "https://news.google.com/rss/articles/ghi", "rank": 8, "category": "비즈니스·경제", "press": "시사저널e", "age_minutes": 420, "cluster_size": 6},
+
+  {"channel": "nate", "source": "네이트 실시간 이슈 키워드", "title": "아이폰 18 사전예약", "url": "https://search.daum.net/nate?q=a", "rank": 2, "extra": {"change": "up", "delta": "3"}},
+  {"channel": "nate", "source": "네이트 실시간 이슈 키워드", "title": "아파트 화재", "url": "https://search.daum.net/nate?q=b", "rank": 4, "extra": {"change": "new", "delta": ""}},
+  {"channel": "nate", "source": "네이트 실시간 이슈 키워드", "title": "국정감사 일정", "url": "https://search.daum.net/nate?q=c", "rank": 7, "extra": {"change": "same", "delta": ""}},
+  {"channel": "nate", "source": "네이트 판 Top랭킹", "title": "시어머니가 아이폰 사전예약을 해달래요", "url": "https://pann.nate.com/talk/1", "rank": 1, "extra": {"comments": 120, "community": true}},
+  {"channel": "daum", "source": "다음 IT/과학", "title": "아이폰 18 사전예약 첫날 품절…프로 모델 인기 폭발적", "url": "https://v.daum.net/v/2026092610000001", "rank": 3, "category": "IT·컴퓨터", "press": "지디넷코리아", "age_minutes": 25},
+  {"channel": "daum", "source": "다음 IT/과학", "title": "애플 아이폰 18 사전예약 대란, 통신사별 혜택 비교", "url": "https://v.daum.net/v/2026092610000002", "rank": 7, "category": "IT·컴퓨터", "press": "머니S", "age_minutes": 90},
+  {"channel": "daum", "source": "다음 홈(이 시각 주요뉴스)", "title": "아이폰 18 사전예약 시작…가격은 동결", "url": "https://v.daum.net/v/2026092610000003", "rank": 12, "category": "", "press": "뉴시스", "age_minutes": 200},
+  {"channel": "daum", "source": "다음 실시간 트렌드", "title": "아이폰 18", "url": "https://search.daum.net/search?q=iphone", "rank": 3, "extra": {"change": "신규", "keyword_only": true}},
+  {"channel": "naver_home", "source": "네이버 모바일 홈판", "title": "아이폰 18 사전예약 성공 후기 (통신사별 혜택 정리)", "url": "https://m.blog.naver.com/abc/1234567", "rank": 4, "press": "애플매니아", "age_minutes": 600, "extra": {"service": "BLOG", "clip": false}},
+  {"channel": "naver_home", "source": "네이버 모바일 홈판", "title": "아이폰 18 언박싱 쇼츠", "url": "https://m.naver.com/shorts/1", "rank": 2, "extra": {"service": "CLIP", "clip": true, "supplementary": true}},
+
+  {"channel": "daum", "source": "다음 사회", "title": "아파트 화재로 주민 30명 대피…인명 피해 없어", "url": "https://v.daum.net/v/2026092610000010", "rank": 2, "category": "사회·정치", "press": "YTN", "age_minutes": 35},
+  {"channel": "naver_ranking", "source": "사회 섹션", "title": "국정감사 앞두고 여야 신경전…증인 채택 공방", "url": "https://n.news.naver.com/mnews/article/001/0000000020", "rank": 1, "category": "사회·정치", "press": "연합뉴스", "extra": {"kind": "section_headline"}},
+
+  {"channel": "naver_ranking", "source": "엔터 많이 본 뉴스", "title": "배우 김OO, 새 드라마 첫방 시청률 12% 돌파", "url": "https://m.entertain.naver.com/ranking/article/1", "rank": 2, "views": 70294, "extra": {"kind": "ent_rank"}},
+  {"channel": "naver_ranking", "source": "엔터 많이 본 뉴스", "title": "아이돌 그룹 컴백 무대 사고방식 달라진 이유", "url": "https://m.entertain.naver.com/ranking/article/2", "rank": 11, "views": 31000, "extra": {"kind": "ent_rank"}},
+  {"channel": "google_trends", "source": "구글 트렌드 실시간 인기(24시간)", "title": "새 드라마 첫방", "rank": 5, "growth_pct": 500, "volume": 20000, "age_minutes": 180, "extra": {"related": ["김OO 드라마"], "categories": [], "fresh": false}},
+  {"channel": "google_news", "source": "구글 뉴스 엔터테인먼트", "title": "김OO 새 드라마 첫방 시청률 두 자릿수 - 스포츠조선", "url": "https://news.google.com/rss/articles/jkl", "rank": 1, "press": "스포츠조선", "age_minutes": 240, "cluster_size": 3},
+
+  {"channel": "daum", "source": "다음 생활", "title": "가을 캠핑 준비물 체크리스트", "url": "https://v.daum.net/v/2026092610000030", "rank": 5, "press": "캠핑저널", "age_minutes": 500},
+  {"channel": "google_trends", "source": "구글 트렌드 실시간 인기(24시간)", "title": "sxmb", "rank": 60, "growth_pct": 200, "age_minutes": 30, "extra": {"related": [], "categories": []}}
+]

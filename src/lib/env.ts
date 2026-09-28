@@ -4,6 +4,8 @@ function read(name: string): string | undefined {
   return v && v.trim() !== "" ? v.trim() : undefined;
 }
 
+export type CronName = "CRON_TOPIC_DISCOVERY" | "CRON_CHANNEL_DISCOVERY" | "CRON_ANALYTICS_SYNC" | "CRON_INSIGHTS";
+
 export const env = {
   get dashboardPassword() { return read("DASHBOARD_PASSWORD"); },
   get appSecret() { return read("APP_SECRET") ?? "dev-insecure-secret-change-me-please-32chars"; },
@@ -40,7 +42,9 @@ export const env = {
   },
   get metaGraphVersion() { return read("META_GRAPH_VERSION") ?? "v21.0"; },
 
-  cron(name: "CRON_TOPIC_DISCOVERY" | "CRON_ANALYTICS_SYNC" | "CRON_INSIGHTS") { return read(name); },
+  cron(name: CronName) { return read(name); },
+  /** 예약 실시간 채널 발굴의 카테고리 (비우면 "주제 선택 보류") */
+  get channelDiscoveryCategory() { return read("CHANNEL_DISCOVERY_CATEGORY"); },
 };
 
 /** 대시보드 설정 화면에서 보여줄 연동 상태 */

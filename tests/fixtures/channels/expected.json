@@ -1,0 +1,1775 @@
+{
+ "groups_business": [
+  {
+   "label": "새 드라마 첫방",
+   "titles": [
+    "새 드라마 첫방",
+    "배우 김OO, 새 드라마 첫방 시청률 12% 돌파",
+    "김OO 새 드라마 첫방 시청률 두 자릿수 - 스포츠조선"
+   ],
+   "score": 63,
+   "reasons": [
+    "3개 채널에서 동시 확인(네이버 랭킹, 구글 트렌드, 구글 뉴스)",
+    "구글 트렌드 검색량 500%↑ (3시간 전부터)",
+    "가장 최근 기사 3시간 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "네이버 엔터 랭킹 2위 · 조회수 7만",
+    "구글 뉴스 같은 사건 기사 3건 묶임",
+    "내 블로그 주제 밖(드라마) - 감점"
+   ],
+   "category": "드라마",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "google_trends",
+     "google_news"
+    ],
+    "trend_pct": 500,
+    "trend_started_min": 180,
+    "trend_volume": 20000,
+    "trend_fresh": false,
+    "newest_age": 180,
+    "naver_best_rank": 2,
+    "naver_max_views": 70294,
+    "home_hit": false,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": 3,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "고기",
+   "titles": [
+    "고기",
+    "으악! 내가 뭘 먹은 거야…김치·돼지고기 '이렇게 팔았어?'",
+    "명절 앞둔 원산지 표시위반 단속서 최다적발은 '김치·돼지고기'",
+    "으악! 내가 뭘 먹은 거야…김치·돼지고기 '이렇게 팔았어?'",
+    "\"국산 아니었네?\"…원산지 표시 단속 최다 적발은 '김치·돼지고기'"
+   ],
+   "score": 66,
+   "reasons": [
+    "4개 채널에서 동시 확인(네이버 랭킹, 네이트, 구글 트렌드, 다음)",
+    "구글 트렌드 검색량 1,000%↑ (1시간 전부터) → 당일 즉시 소재",
+    "최근 4시간 안에 시작된 초신선 키워드",
+    "가장 최근 기사 44분 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "네이버 언론사 랭킹 진입(2위)",
+    "네이버 섹션 헤드라인 노출",
+    "논란성 표현 포함(적발, 위반) - 감점"
+   ],
+   "category": "비즈니스·경제",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "nate",
+     "google_trends",
+     "daum"
+    ],
+    "trend_pct": 1000,
+    "trend_started_min": 60,
+    "trend_volume": 5000,
+    "trend_fresh": true,
+    "newest_age": 44,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 1,
+    "press_best_rank": 2,
+    "headline_hits": 1,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": true,
+    "gnews_cluster": null,
+    "daum_count": 1,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [
+     "적발",
+     "위반"
+    ],
+    "politics": []
+   }
+  },
+  {
+   "label": "수도권 광역급행철도 c노선",
+   "titles": [
+    "수도권 광역급행철도 c노선"
+   ],
+   "score": 47,
+   "reasons": [
+    "구글 트렌드 검색량 1,000%↑ (1시간 전부터) → 당일 즉시 소재",
+    "가장 최근 기사 1시간 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "선점 후보: 네이버 랭킹/홈판에는 아직 없음"
+   ],
+   "category": "비즈니스·경제",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "google_trends"
+    ],
+    "trend_pct": 1000,
+    "trend_started_min": 60,
+    "trend_volume": 2000,
+    "trend_fresh": false,
+    "newest_age": 60,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": true
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "최태원",
+   "titles": [
+    "최태원",
+    "‘최태원 동거인’ 김희영, 허위사실 유튜버에 또 승소… 1000만원 배상",
+    "최태원 동거인 김희영, 허위사실 유튜버에 또 승소…1000만원 배상",
+    "최태원 '승부수'...역대급 IPO 온다",
+    "최태원 동거인 김희영, 허위사실 비방 유튜버에 또 이겼다…1000만원 받는다 [세상&]"
+   ],
+   "score": 51,
+   "reasons": [
+    "3개 채널에서 동시 확인(네이버 랭킹, 네이트, 구글 트렌드)",
+    "구글 트렌드 검색량 1,000%↑ (6시간 전부터) → 당일 즉시 소재",
+    "가장 최근 기사 6시간 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "네이버 언론사 랭킹 3곳에 동시에 오름(최고 1위)",
+    "내 블로그 주제 밖(미분류) - 감점"
+   ],
+   "category": "미분류",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "nate",
+     "google_trends"
+    ],
+    "trend_pct": 1000,
+    "trend_started_min": 360,
+    "trend_volume": 10000,
+    "trend_fresh": false,
+    "newest_age": 360,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 3,
+    "press_best_rank": 1,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": true,
+    "gnews_cluster": null,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "자영업",
+   "titles": [
+    "자영업",
+    "600원 아이스크림 팔아 얼마 남나…무인점포 ‘싼 창업’의 계산법 [자영업 리포트]",
+    "저축은행 자영업자 대출 4년 새 '반토막'...연체율은 3.6배 급등해 부실 악화",
+    "\"4년새 저축은행 자영업자 대출잔액 절반 되고 연체율은 3.6배\""
+   ],
+   "score": 63,
+   "reasons": [
+    "4개 채널에서 동시 확인(네이버 랭킹, 구글 트렌드, 다음, 구글 뉴스)",
+    "구글 트렌드 검색량 900%↑ (22시간 전부터)",
+    "가장 최근 기사 2시간 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "네이버 언론사 랭킹 진입(1위)"
+   ],
+   "category": "비즈니스·경제",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "google_trends",
+     "daum",
+     "google_news"
+    ],
+    "trend_pct": 900,
+    "trend_started_min": 1320,
+    "trend_volume": 2000,
+    "trend_fresh": false,
+    "newest_age": 120,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 1,
+    "press_best_rank": 1,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": 1,
+    "daum_count": 1,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "스타벅스",
+   "titles": [
+    "스타벅스",
+    "\"스타벅스에 무슨 일이\"...파격 결정에 '술렁'"
+   ],
+   "score": 45,
+   "reasons": [
+    "2개 채널에서 동시 확인(네이버 랭킹, 구글 트렌드)",
+    "구글 트렌드 검색량 1,000%↑ (21시간 전부터) → 당일 즉시 소재",
+    "네이버 언론사 랭킹 진입(3위)"
+   ],
+   "category": "비즈니스·경제",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "google_trends"
+    ],
+    "trend_pct": 1000,
+    "trend_started_min": 1260,
+    "trend_volume": 5000,
+    "trend_fresh": false,
+    "newest_age": 1260,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 1,
+    "press_best_rank": 3,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "sxmb",
+   "titles": [
+    "sxmb"
+   ],
+   "score": 18,
+   "reasons": [
+    "구글 트렌드 검색량 200%↑ (30분 전부터)",
+    "가장 최근 기사 30분 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "내 블로그 주제 밖(미분류) - 감점",
+    "선점 후보: 네이버 랭킹/홈판에는 아직 없음"
+   ],
+   "category": "미분류",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "google_trends"
+    ],
+    "trend_pct": 200,
+    "trend_started_min": 30,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": 30,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": true
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "아이폰 18 사전예약",
+   "titles": [
+    "아이폰 18 사전예약",
+    "아이폰 18",
+    "아이폰 18 사전예약 성공 후기 (통신사별 혜택 정리)",
+    "아이폰 18 사전예약 첫날 품절…프로 모델 인기 폭발적",
+    "애플 아이폰 18 사전예약 대란, 통신사별 혜택 비교",
+    "아이폰 18 사전예약 시작…가격은 동결"
+   ],
+   "score": 58,
+   "reasons": [
+    "3개 채널에서 동시 확인(네이버 홈판, 네이트, 다음)",
+    "가장 최근 기사 25분 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "네이버 모바일 홈판 노출 확인 (실제 클릭 검증)",
+    "네이트 실시간 이슈 키워드 2위",
+    "다음 실시간 트렌드 3위",
+    "다음에 서로 다른 제목의 기사 3건 (트래픽 커지는 중)",
+    "내 블로그 주제 밖(IT·컴퓨터) - 감점"
+   ],
+   "category": "IT·컴퓨터",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_home",
+     "nate",
+     "daum"
+    ],
+    "trend_pct": null,
+    "trend_started_min": null,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": 25,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": true,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 0,
+    "nate_rank": 2,
+    "nate_change": "up",
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 3,
+    "daum_trend_rank": 3,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "아파트 화재",
+   "titles": [
+    "아파트 화재",
+    "아파트 화재로 주민 30명 대피…인명 피해 없어"
+   ],
+   "score": 27,
+   "reasons": [
+    "2개 채널에서 동시 확인(네이트, 다음)",
+    "가장 최근 기사 35분 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "네이트 실시간 이슈 키워드 4위",
+    "내 블로그 주제 밖(사회·정치) - 감점",
+    "선점 후보: 네이버 랭킹/홈판에는 아직 없음"
+   ],
+   "category": "사회·정치",
+   "excluded_reason": "부정적 사건/이슈 키워드: 화재",
+   "metrics": {
+    "channels": [
+     "nate",
+     "daum"
+    ],
+    "trend_pct": null,
+    "trend_started_min": null,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": 35,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 0,
+    "nate_rank": 4,
+    "nate_change": "new",
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 1,
+    "daum_trend_rank": null,
+    "preempt": true
+   },
+   "flags": {
+    "hard": [
+     "화재"
+    ],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "국정감사 일정",
+   "titles": [
+    "국정감사 일정",
+    "국정감사 앞두고 여야 신경전…증인 채택 공방"
+   ],
+   "score": 15,
+   "reasons": [
+    "2개 채널에서 동시 확인(네이버 랭킹, 네이트)",
+    "네이버 섹션 헤드라인 노출",
+    "네이트 실시간 이슈 키워드 7위",
+    "내 블로그 주제 밖(사회·정치) - 감점"
+   ],
+   "category": "사회·정치",
+   "excluded_reason": "정치 이슈 (블로그 주제 밖): 국정감사",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "nate"
+    ],
+    "trend_pct": null,
+    "trend_started_min": null,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": null,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 1,
+    "nate_rank": 7,
+    "nate_change": "same",
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": [
+     "국정감사"
+    ]
+   }
+  },
+  {
+   "label": "‘적자 기업’서 200조 몸값으로…SK하닉 솔리다임, 내년 美 상장 시동",
+   "titles": [
+    "‘적자 기업’서 200조 몸값으로…SK하닉 솔리다임, 내년 美 상장 시동",
+    "SK하이닉스 솔리다임, 내년 美 상장 추진...기업가치 최대 204조",
+    "외신發 솔리다임 美 IPO說 재점화···SK하이닉스 중복상장 추진하나"
+   ],
+   "score": 29,
+   "reasons": [
+    "2개 채널에서 동시 확인(네이버 랭킹, 구글 뉴스)",
+    "네이버 언론사 랭킹 2곳에 동시에 오름(최고 3위)",
+    "구글 뉴스 같은 사건 기사 5건 이상 묶임(여러 매체가 동시에 보도)"
+   ],
+   "category": "비즈니스·경제",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "google_news"
+    ],
+    "trend_pct": null,
+    "trend_started_min": null,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": 420,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 2,
+    "press_best_rank": 3,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": 6,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "국내 기름값 19주 연속 하락…추석 연휴 고속도로 주유소도 100원↓",
+   "titles": [
+    "국내 기름값 19주 연속 하락…추석 연휴 고속도로 주유소도 100원↓",
+    "주유소 기름값 19주 연속 하락…가격상한·추석 할인 영향",
+    "기름값 19주째 하락…고속도로 주유소 할인 등 영향",
+    "전국 휘발유값 19주 연속 하락…추석 고속도로 할인도 영향 - 전자신문"
+   ],
+   "score": 54,
+   "reasons": [
+    "3개 채널에서 동시 확인(네이버 랭킹, 다음, 구글 뉴스)",
+    "가장 최근 기사 13분 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "네이버 언론사 랭킹 진입(5위)",
+    "네이버 섹션 헤드라인 노출",
+    "구글 뉴스 같은 사건 기사 5건 이상 묶임(여러 매체가 동시에 보도)"
+   ],
+   "category": "비즈니스·경제",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "daum",
+     "google_news"
+    ],
+    "trend_pct": null,
+    "trend_started_min": null,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": 13,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 1,
+    "press_best_rank": 5,
+    "headline_hits": 1,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": 5,
+    "daum_count": 1,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "아이돌 그룹 컴백 무대 사고방식 달라진 이유",
+   "titles": [
+    "아이돌 그룹 컴백 무대 사고방식 달라진 이유"
+   ],
+   "score": 5,
+   "reasons": [
+    "네이버 엔터 랭킹 11위 · 조회수 3.1만",
+    "내 블로그 주제 밖(스타·연예인) - 감점"
+   ],
+   "category": "스타·연예인",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking"
+    ],
+    "trend_pct": null,
+    "trend_started_min": null,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": null,
+    "naver_best_rank": 11,
+    "naver_max_views": 31000,
+    "home_hit": false,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "가을 캠핑 준비물 체크리스트",
+   "titles": [
+    "가을 캠핑 준비물 체크리스트"
+   ],
+   "score": 0,
+   "reasons": [
+    "내 블로그 주제 밖(미분류) - 감점"
+   ],
+   "category": "미분류",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "daum"
+    ],
+    "trend_pct": null,
+    "trend_started_min": null,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": 500,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 1,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  }
+ ],
+ "groups_it": [
+  {
+   "label": "새 드라마 첫방",
+   "titles": [
+    "새 드라마 첫방",
+    "배우 김OO, 새 드라마 첫방 시청률 12% 돌파",
+    "김OO 새 드라마 첫방 시청률 두 자릿수 - 스포츠조선"
+   ],
+   "score": 63,
+   "reasons": [
+    "3개 채널에서 동시 확인(네이버 랭킹, 구글 트렌드, 구글 뉴스)",
+    "구글 트렌드 검색량 500%↑ (3시간 전부터)",
+    "가장 최근 기사 3시간 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "네이버 엔터 랭킹 2위 · 조회수 7만",
+    "구글 뉴스 같은 사건 기사 3건 묶임",
+    "내 블로그 주제 밖(드라마) - 감점"
+   ],
+   "category": "드라마",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "google_trends",
+     "google_news"
+    ],
+    "trend_pct": 500,
+    "trend_started_min": 180,
+    "trend_volume": 20000,
+    "trend_fresh": false,
+    "newest_age": 180,
+    "naver_best_rank": 2,
+    "naver_max_views": 70294,
+    "home_hit": false,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": 3,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "고기",
+   "titles": [
+    "고기",
+    "으악! 내가 뭘 먹은 거야…김치·돼지고기 '이렇게 팔았어?'",
+    "명절 앞둔 원산지 표시위반 단속서 최다적발은 '김치·돼지고기'",
+    "으악! 내가 뭘 먹은 거야…김치·돼지고기 '이렇게 팔았어?'",
+    "\"국산 아니었네?\"…원산지 표시 단속 최다 적발은 '김치·돼지고기'"
+   ],
+   "score": 51,
+   "reasons": [
+    "4개 채널에서 동시 확인(네이버 랭킹, 네이트, 구글 트렌드, 다음)",
+    "구글 트렌드 검색량 1,000%↑ (1시간 전부터) → 당일 즉시 소재",
+    "최근 4시간 안에 시작된 초신선 키워드",
+    "가장 최근 기사 44분 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "네이버 언론사 랭킹 진입(2위)",
+    "네이버 섹션 헤드라인 노출",
+    "내 블로그 주제 밖(비즈니스·경제) - 감점",
+    "논란성 표현 포함(적발, 위반) - 감점"
+   ],
+   "category": "비즈니스·경제",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "nate",
+     "google_trends",
+     "daum"
+    ],
+    "trend_pct": 1000,
+    "trend_started_min": 60,
+    "trend_volume": 5000,
+    "trend_fresh": true,
+    "newest_age": 44,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 1,
+    "press_best_rank": 2,
+    "headline_hits": 1,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": true,
+    "gnews_cluster": null,
+    "daum_count": 1,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [
+     "적발",
+     "위반"
+    ],
+    "politics": []
+   }
+  },
+  {
+   "label": "수도권 광역급행철도 c노선",
+   "titles": [
+    "수도권 광역급행철도 c노선"
+   ],
+   "score": 32,
+   "reasons": [
+    "구글 트렌드 검색량 1,000%↑ (1시간 전부터) → 당일 즉시 소재",
+    "가장 최근 기사 1시간 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "내 블로그 주제 밖(비즈니스·경제) - 감점",
+    "선점 후보: 네이버 랭킹/홈판에는 아직 없음"
+   ],
+   "category": "비즈니스·경제",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "google_trends"
+    ],
+    "trend_pct": 1000,
+    "trend_started_min": 60,
+    "trend_volume": 2000,
+    "trend_fresh": false,
+    "newest_age": 60,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": true
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "최태원",
+   "titles": [
+    "최태원",
+    "‘최태원 동거인’ 김희영, 허위사실 유튜버에 또 승소… 1000만원 배상",
+    "최태원 동거인 김희영, 허위사실 유튜버에 또 승소…1000만원 배상",
+    "최태원 '승부수'...역대급 IPO 온다",
+    "최태원 동거인 김희영, 허위사실 비방 유튜버에 또 이겼다…1000만원 받는다 [세상&]"
+   ],
+   "score": 51,
+   "reasons": [
+    "3개 채널에서 동시 확인(네이버 랭킹, 네이트, 구글 트렌드)",
+    "구글 트렌드 검색량 1,000%↑ (6시간 전부터) → 당일 즉시 소재",
+    "가장 최근 기사 6시간 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "네이버 언론사 랭킹 3곳에 동시에 오름(최고 1위)",
+    "내 블로그 주제 밖(미분류) - 감점"
+   ],
+   "category": "미분류",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "nate",
+     "google_trends"
+    ],
+    "trend_pct": 1000,
+    "trend_started_min": 360,
+    "trend_volume": 10000,
+    "trend_fresh": false,
+    "newest_age": 360,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 3,
+    "press_best_rank": 1,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": true,
+    "gnews_cluster": null,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "자영업",
+   "titles": [
+    "자영업",
+    "600원 아이스크림 팔아 얼마 남나…무인점포 ‘싼 창업’의 계산법 [자영업 리포트]",
+    "저축은행 자영업자 대출 4년 새 '반토막'...연체율은 3.6배 급등해 부실 악화",
+    "\"4년새 저축은행 자영업자 대출잔액 절반 되고 연체율은 3.6배\""
+   ],
+   "score": 48,
+   "reasons": [
+    "4개 채널에서 동시 확인(네이버 랭킹, 구글 트렌드, 다음, 구글 뉴스)",
+    "구글 트렌드 검색량 900%↑ (22시간 전부터)",
+    "가장 최근 기사 2시간 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "네이버 언론사 랭킹 진입(1위)",
+    "내 블로그 주제 밖(비즈니스·경제) - 감점"
+   ],
+   "category": "비즈니스·경제",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "google_trends",
+     "daum",
+     "google_news"
+    ],
+    "trend_pct": 900,
+    "trend_started_min": 1320,
+    "trend_volume": 2000,
+    "trend_fresh": false,
+    "newest_age": 120,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 1,
+    "press_best_rank": 1,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": 1,
+    "daum_count": 1,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "스타벅스",
+   "titles": [
+    "스타벅스",
+    "\"스타벅스에 무슨 일이\"...파격 결정에 '술렁'"
+   ],
+   "score": 30,
+   "reasons": [
+    "2개 채널에서 동시 확인(네이버 랭킹, 구글 트렌드)",
+    "구글 트렌드 검색량 1,000%↑ (21시간 전부터) → 당일 즉시 소재",
+    "네이버 언론사 랭킹 진입(3위)",
+    "내 블로그 주제 밖(비즈니스·경제) - 감점"
+   ],
+   "category": "비즈니스·경제",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "google_trends"
+    ],
+    "trend_pct": 1000,
+    "trend_started_min": 1260,
+    "trend_volume": 5000,
+    "trend_fresh": false,
+    "newest_age": 1260,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 1,
+    "press_best_rank": 3,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "sxmb",
+   "titles": [
+    "sxmb"
+   ],
+   "score": 18,
+   "reasons": [
+    "구글 트렌드 검색량 200%↑ (30분 전부터)",
+    "가장 최근 기사 30분 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "내 블로그 주제 밖(미분류) - 감점",
+    "선점 후보: 네이버 랭킹/홈판에는 아직 없음"
+   ],
+   "category": "미분류",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "google_trends"
+    ],
+    "trend_pct": 200,
+    "trend_started_min": 30,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": 30,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": true
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "아이폰 18 사전예약",
+   "titles": [
+    "아이폰 18 사전예약",
+    "아이폰 18",
+    "아이폰 18 사전예약 성공 후기 (통신사별 혜택 정리)",
+    "아이폰 18 사전예약 첫날 품절…프로 모델 인기 폭발적",
+    "애플 아이폰 18 사전예약 대란, 통신사별 혜택 비교",
+    "아이폰 18 사전예약 시작…가격은 동결"
+   ],
+   "score": 73,
+   "reasons": [
+    "3개 채널에서 동시 확인(네이버 홈판, 네이트, 다음)",
+    "가장 최근 기사 25분 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "네이버 모바일 홈판 노출 확인 (실제 클릭 검증)",
+    "네이트 실시간 이슈 키워드 2위",
+    "다음 실시간 트렌드 3위",
+    "다음에 서로 다른 제목의 기사 3건 (트래픽 커지는 중)"
+   ],
+   "category": "IT·컴퓨터",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_home",
+     "nate",
+     "daum"
+    ],
+    "trend_pct": null,
+    "trend_started_min": null,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": 25,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": true,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 0,
+    "nate_rank": 2,
+    "nate_change": "up",
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 3,
+    "daum_trend_rank": 3,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "아파트 화재",
+   "titles": [
+    "아파트 화재",
+    "아파트 화재로 주민 30명 대피…인명 피해 없어"
+   ],
+   "score": 27,
+   "reasons": [
+    "2개 채널에서 동시 확인(네이트, 다음)",
+    "가장 최근 기사 35분 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "네이트 실시간 이슈 키워드 4위",
+    "내 블로그 주제 밖(사회·정치) - 감점",
+    "선점 후보: 네이버 랭킹/홈판에는 아직 없음"
+   ],
+   "category": "사회·정치",
+   "excluded_reason": "부정적 사건/이슈 키워드: 화재",
+   "metrics": {
+    "channels": [
+     "nate",
+     "daum"
+    ],
+    "trend_pct": null,
+    "trend_started_min": null,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": 35,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 0,
+    "nate_rank": 4,
+    "nate_change": "new",
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 1,
+    "daum_trend_rank": null,
+    "preempt": true
+   },
+   "flags": {
+    "hard": [
+     "화재"
+    ],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "국정감사 일정",
+   "titles": [
+    "국정감사 일정",
+    "국정감사 앞두고 여야 신경전…증인 채택 공방"
+   ],
+   "score": 15,
+   "reasons": [
+    "2개 채널에서 동시 확인(네이버 랭킹, 네이트)",
+    "네이버 섹션 헤드라인 노출",
+    "네이트 실시간 이슈 키워드 7위",
+    "내 블로그 주제 밖(사회·정치) - 감점"
+   ],
+   "category": "사회·정치",
+   "excluded_reason": "정치 이슈 (블로그 주제 밖): 국정감사",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "nate"
+    ],
+    "trend_pct": null,
+    "trend_started_min": null,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": null,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 1,
+    "nate_rank": 7,
+    "nate_change": "same",
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": [
+     "국정감사"
+    ]
+   }
+  },
+  {
+   "label": "‘적자 기업’서 200조 몸값으로…SK하닉 솔리다임, 내년 美 상장 시동",
+   "titles": [
+    "‘적자 기업’서 200조 몸값으로…SK하닉 솔리다임, 내년 美 상장 시동",
+    "SK하이닉스 솔리다임, 내년 美 상장 추진...기업가치 최대 204조",
+    "외신發 솔리다임 美 IPO說 재점화···SK하이닉스 중복상장 추진하나"
+   ],
+   "score": 14,
+   "reasons": [
+    "2개 채널에서 동시 확인(네이버 랭킹, 구글 뉴스)",
+    "네이버 언론사 랭킹 2곳에 동시에 오름(최고 3위)",
+    "구글 뉴스 같은 사건 기사 5건 이상 묶임(여러 매체가 동시에 보도)",
+    "내 블로그 주제 밖(비즈니스·경제) - 감점"
+   ],
+   "category": "비즈니스·경제",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "google_news"
+    ],
+    "trend_pct": null,
+    "trend_started_min": null,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": 420,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 2,
+    "press_best_rank": 3,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": 6,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "국내 기름값 19주 연속 하락…추석 연휴 고속도로 주유소도 100원↓",
+   "titles": [
+    "국내 기름값 19주 연속 하락…추석 연휴 고속도로 주유소도 100원↓",
+    "주유소 기름값 19주 연속 하락…가격상한·추석 할인 영향",
+    "기름값 19주째 하락…고속도로 주유소 할인 등 영향",
+    "전국 휘발유값 19주 연속 하락…추석 고속도로 할인도 영향 - 전자신문"
+   ],
+   "score": 39,
+   "reasons": [
+    "3개 채널에서 동시 확인(네이버 랭킹, 다음, 구글 뉴스)",
+    "가장 최근 기사 13분 전 (다른 블로거가 아직 덜 다뤘을 가능성)",
+    "네이버 언론사 랭킹 진입(5위)",
+    "네이버 섹션 헤드라인 노출",
+    "구글 뉴스 같은 사건 기사 5건 이상 묶임(여러 매체가 동시에 보도)",
+    "내 블로그 주제 밖(비즈니스·경제) - 감점"
+   ],
+   "category": "비즈니스·경제",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking",
+     "daum",
+     "google_news"
+    ],
+    "trend_pct": null,
+    "trend_started_min": null,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": 13,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 1,
+    "press_best_rank": 5,
+    "headline_hits": 1,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": 5,
+    "daum_count": 1,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "아이돌 그룹 컴백 무대 사고방식 달라진 이유",
+   "titles": [
+    "아이돌 그룹 컴백 무대 사고방식 달라진 이유"
+   ],
+   "score": 5,
+   "reasons": [
+    "네이버 엔터 랭킹 11위 · 조회수 3.1만",
+    "내 블로그 주제 밖(스타·연예인) - 감점"
+   ],
+   "category": "스타·연예인",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "naver_ranking"
+    ],
+    "trend_pct": null,
+    "trend_started_min": null,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": null,
+    "naver_best_rank": 11,
+    "naver_max_views": 31000,
+    "home_hit": false,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 0,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  },
+  {
+   "label": "가을 캠핑 준비물 체크리스트",
+   "titles": [
+    "가을 캠핑 준비물 체크리스트"
+   ],
+   "score": 0,
+   "reasons": [
+    "내 블로그 주제 밖(미분류) - 감점"
+   ],
+   "category": "미분류",
+   "excluded_reason": "",
+   "metrics": {
+    "channels": [
+     "daum"
+    ],
+    "trend_pct": null,
+    "trend_started_min": null,
+    "trend_volume": null,
+    "trend_fresh": false,
+    "newest_age": 500,
+    "naver_best_rank": null,
+    "naver_max_views": null,
+    "home_hit": false,
+    "press_hits": 0,
+    "press_best_rank": null,
+    "headline_hits": 0,
+    "nate_rank": null,
+    "nate_change": null,
+    "nate_news_hit": false,
+    "gnews_cluster": null,
+    "daum_count": 1,
+    "daum_trend_rank": null,
+    "preempt": false
+   },
+   "flags": {
+    "hard": [],
+    "soft": [],
+    "politics": []
+   }
+  }
+ ],
+ "tokens": {
+  "명절 앞둔 원산지 표시위반 단속서 최다적발은 '김치·돼지고기'": [
+   "김치",
+   "단속서",
+   "돼지고기",
+   "명절",
+   "앞둔",
+   "원산지",
+   "최다적발",
+   "표시위반"
+  ],
+  "[단독] 삼성전자, 2027년 신제품 공개했다 - 조선비즈": [
+   "삼성전자",
+   "신제품"
+  ],
+  "‘적자 기업’서 200조 몸값으로…SK하닉 솔리다임, 내년 美 상장 시동": [
+   "sk하닉",
+   "기업",
+   "몸값",
+   "상장",
+   "솔리다임",
+   "시동",
+   "적자"
+  ],
+  "10시간 동안 34세 남성이 알았는데 반전": [
+   "남성",
+   "동안"
+  ],
+  "AI 인공지능으로 보고서 쓰는 법": [
+   "ai",
+   "보고서",
+   "쓰는",
+   "인공지능"
+  ],
+  "아이폰 18 사전예약 첫날 품절…프로 모델 인기 폭발적": [
+   "모델",
+   "사전예약",
+   "아이폰",
+   "인기",
+   "첫날",
+   "폭발적",
+   "품절",
+   "프로"
+  ],
+  "【속보】 기름값 19주째 하락…고속도로 주유소 할인 등 영향 | SBS": [
+   "고속도",
+   "기름값",
+   "영향",
+   "주유소",
+   "하락",
+   "할인"
+  ],
+  "가을 캠핑 준비물 체크리스트": [
+   "가을",
+   "준비물",
+   "체크리스트",
+   "캠핑"
+  ],
+  "금리 인하에 코스피 상승, 부동산 전세 시장은?": [
+   "금리",
+   "부동산",
+   "상승",
+   "시장",
+   "인하",
+   "전세",
+   "코스피"
+  ],
+  "강아지 고양이 반려동물 동물병원 사료": [
+   "강아지",
+   "고양",
+   "동물병원",
+   "반려동물",
+   "사료"
+  ]
+ },
+ "norm": {
+  "명절 앞둔 원산지 표시위반 단속서 최다적발은 '김치·돼지고기'": "명절앞둔원산지표시위반단속서최다적발은김치돼지고기",
+  "[단독] 삼성전자, 2027년 신제품 공개했다 - 조선비즈": "단독삼성전자2027년신제품공개했다",
+  "‘적자 기업’서 200조 몸값으로…SK하닉 솔리다임, 내년 美 상장 시동": "적자기업서200조몸값으로sk하닉솔리다임내년상장시동",
+  "10시간 동안 34세 남성이 알았는데 반전": "10시간동안34세남성이알았는데반전",
+  "AI 인공지능으로 보고서 쓰는 법": "ai인공지능으로보고서쓰는법",
+  "아이폰 18 사전예약 첫날 품절…프로 모델 인기 폭발적": "아이폰18사전예약첫날품절프로모델인기폭발적",
+  "【속보】 기름값 19주째 하락…고속도로 주유소 할인 등 영향 | SBS": "속보기름값19주째하락고속도로주유소할인등영향",
+  "가을 캠핑 준비물 체크리스트": "가을캠핑준비물체크리스트",
+  "금리 인하에 코스피 상승, 부동산 전세 시장은?": "금리인하에코스피상승부동산전세시장은",
+  "강아지 고양이 반려동물 동물병원 사료": "강아지고양이반려동물동물병원사료"
+ },
+ "classify": {
+  "명절 앞둔 원산지 표시위반 단속서 최다적발은 '김치·돼지고기'": "사회·정치",
+  "[단독] 삼성전자, 2027년 신제품 공개했다 - 조선비즈": "IT·컴퓨터",
+  "‘적자 기업’서 200조 몸값으로…SK하닉 솔리다임, 내년 美 상장 시동": "비즈니스·경제",
+  "10시간 동안 34세 남성이 알았는데 반전": "미분류",
+  "AI 인공지능으로 보고서 쓰는 법": "IT·컴퓨터",
+  "아이폰 18 사전예약 첫날 품절…프로 모델 인기 폭발적": "IT·컴퓨터",
+  "【속보】 기름값 19주째 하락…고속도로 주유소 할인 등 영향 | SBS": "미분류",
+  "가을 캠핑 준비물 체크리스트": "미분류",
+  "금리 인하에 코스피 상승, 부동산 전세 시장은?": "비즈니스·경제",
+  "강아지 고양이 반려동물 동물병원 사료": "반려동물"
+ },
+ "flags": {
+  "명절 앞둔 원산지 표시위반 단속서 최다적발은 '김치·돼지고기'": {
+   "hard": [],
+   "soft": [
+    "적발",
+    "위반"
+   ],
+   "politics": []
+  },
+  "[단독] 삼성전자, 2027년 신제품 공개했다 - 조선비즈": {
+   "hard": [],
+   "soft": [],
+   "politics": []
+  },
+  "‘적자 기업’서 200조 몸값으로…SK하닉 솔리다임, 내년 美 상장 시동": {
+   "hard": [],
+   "soft": [],
+   "politics": []
+  },
+  "10시간 동안 34세 남성이 알았는데 반전": {
+   "hard": [],
+   "soft": [],
+   "politics": []
+  },
+  "AI 인공지능으로 보고서 쓰는 법": {
+   "hard": [],
+   "soft": [],
+   "politics": []
+  },
+  "아이폰 18 사전예약 첫날 품절…프로 모델 인기 폭발적": {
+   "hard": [],
+   "soft": [],
+   "politics": []
+  },
+  "【속보】 기름값 19주째 하락…고속도로 주유소 할인 등 영향 | SBS": {
+   "hard": [],
+   "soft": [],
+   "politics": []
+  },
+  "가을 캠핑 준비물 체크리스트": {
+   "hard": [],
+   "soft": [],
+   "politics": []
+  },
+  "금리 인하에 코스피 상승, 부동산 전세 시장은?": {
+   "hard": [],
+   "soft": [],
+   "politics": []
+  },
+  "강아지 고양이 반려동물 동물병원 사료": {
+   "hard": [],
+   "soft": [],
+   "politics": []
+  },
+  "아파트 화재로 주민 대피": {
+   "hard": [
+    "화재"
+   ],
+   "soft": [],
+   "politics": []
+  },
+  "사고방식이 바뀐 사고 현장": {
+   "hard": [
+    "사고"
+   ],
+   "soft": [],
+   "politics": []
+  },
+  "대통령 국정감사 발언 논란": {
+   "hard": [],
+   "soft": [
+    "논란"
+   ],
+   "politics": [
+    "대통령",
+    "국정감사"
+   ]
+  }
+ },
+ "parse_count": {
+  "4.7만": 47000,
+  "6만 명": 60000,
+  "5천+": 5000,
+  "1,234": 1234,
+  "2.3K": 2300,
+  "70,294": 70294,
+  "1.5억": 150000000,
+  "조회 3.3만": 33000,
+  "0.5": 0,
+  "2.5": 2,
+  "없음": null,
+  "": null
+ },
+ "parse_ago": {
+  "56분 전": 56,
+  "2시간 전": 120,
+  "1일 전": 1440,
+  "방금 전": 0,
+  "1일 2시간 30분 전": 1590,
+  "6시간 동안 지속됨": null,
+  "전날": null,
+  "3시간 전 업데이트": 180,
+  "12시간 전": 720,
+  "": null
+ },
+ "parse_pct": {
+  "1,000%": 1000,
+  "900%": 900,
+  "약 50 %": 50,
+  "없음": null
+ },
+ "fmt_count": [
+  [
+   null,
+   "-"
+  ],
+  [
+   0,
+   "0"
+  ],
+  [
+   999,
+   "999"
+  ],
+  [
+   9999,
+   "9,999"
+  ],
+  [
+   10000,
+   "1만"
+  ],
+  [
+   12500,
+   "1.2만"
+  ],
+  [
+   13500,
+   "1.4만"
+  ],
+  [
+   47000,
+   "4.7만"
+  ],
+  [
+   70294,
+   "7만"
+  ],
+  [
+   1000000,
+   "100만"
+  ]
+ ],
+ "fmt_ago": [
+  [
+   null,
+   "-"
+  ],
+  [
+   0,
+   "0분 전"
+  ],
+  [
+   59,
+   "59분 전"
+  ],
+  [
+   60,
+   "1시간 전"
+  ],
+  [
+   119,
+   "1시간 전"
+  ],
+  [
+   1439,
+   "23시간 전"
+  ],
+  [
+   1440,
+   "1일 전"
+  ],
+  [
+   3000,
+   "2일 전"
+  ]
+ ],
+ "resolve": [
+  [
+   [
+    "IT·컴퓨터",
+    "비즈니스·경제",
+    "비즈니스·경제"
+   ],
+   "",
+   "비즈니스·경제"
+  ],
+  [
+   [
+    "게임",
+    "스포츠"
+   ],
+   "",
+   "게임"
+  ],
+  [
+   [
+    "",
+    ""
+   ],
+   "코스피 금리",
+   "비즈니스·경제"
+  ]
+ ],
+ "parsers": {
+  "trend_rows": [
+   [
+    [
+     "이현중",
+     "5천+",
+     "arrow_upward",
+     "1,000%",
+     "12시간 전",
+     "trending_up",
+     "활성",
+     "아시안게임 농구",
+     "외 5개"
+    ],
+    {
+     "keyword": "이현중",
+     "volume": 5000,
+     "pct": 1000,
+     "started_min": 720,
+     "status": "활성",
+     "related": [
+      "아시안게임 농구"
+     ]
+    }
+   ],
+   [
+    [
+     "고기",
+     "2만+",
+     "1,000%",
+     "1시간 전",
+     "돼지고기 원산지",
+     "김치"
+    ],
+    {
+     "keyword": "고기",
+     "volume": 20000,
+     "pct": 1000,
+     "started_min": 60,
+     "status": "",
+     "related": [
+      "돼지고기 원산지",
+      "김치"
+     ]
+    }
+   ],
+   [
+    [
+     "자영업",
+     "500+",
+     "timelapse",
+     "900%",
+     "22시간 전",
+     "6시간 동안 지속됨"
+    ],
+    {
+     "keyword": "자영업",
+     "volume": 500,
+     "pct": 900,
+     "started_min": 1320,
+     "status": "6시간 동안 지속됨",
+     "related": []
+    }
+   ],
+   [
+    [],
+    null
+   ]
+  ],
+  "daum_trends": [
+   [
+    "1위, 트럼프 대이란 대응 , 신규",
+    [
+     1,
+     "트럼프 대이란 대응",
+     "신규"
+    ]
+   ],
+   [
+    "2위, 추석 기차표",
+    [
+     2,
+     "추석 기차표",
+     ""
+    ]
+   ],
+   [
+    "위, 빈 순위",
+    null
+   ],
+   [
+    "10위",
+    null
+   ],
+   [
+    "3위,  고기 , 상승",
+    [
+     3,
+     "고기",
+     "상승"
+    ]
+   ]
+  ],
+  "rss_now": "2026-09-26T09:00:00+00:00",
+  "rss": [
+   [
+    "전국 휘발유값 19주 연속 하락…추석 고속도로 할인도 영향",
+    "전자신문",
+    380,
+    5,
+    "https://news.google.com/rss/articles/AAA?oc=5",
+    [
+     "전국 휘발유값 19주 연속 하락…추석 고속도로 할인도 영향",
+     "기름값 19주째 하락 \"추석 전 더 내린다\"",
+     "주유소 가격 하락세 지속",
+     "휘발유 1600원대",
+     "경유도 하락"
+    ]
+   ],
+   [
+    "SK하이닉스 솔리다임 美 상장 추진",
+    "매일경제",
+    61,
+    1,
+    "https://news.google.com/rss/articles/BBB?oc=5",
+    [
+     "SK하이닉스 솔리다임 美 상장 추진"
+    ]
+   ],
+   [
+    "설명 없는 기사",
+    "",
+    null,
+    1,
+    "https://news.google.com/rss/articles/CCC",
+    []
+   ]
+  ]
+ }
+}

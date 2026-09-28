@@ -1,7 +1,11 @@
 import { db } from "@/lib/db";
 import { ActionButton } from "@/components/ActionButton";
 import { AutoRefresh } from "@/components/AutoRefresh";
-import { DiscoverForm, GenerateFromTopic, ManualPostForm } from "@/components/Forms";
+import { ChannelDiscoverForm, DiscoverForm, GenerateFromTopic, ManualPostForm } from "@/components/Forms";
+import { DEFAULT_CHANNEL_CONFIG } from "@/lib/topics/channels/config";
+import type { ChannelTopicSignals } from "@/lib/topics/channels/discover";
+import { CHANNEL_LABEL } from "@/lib/topics/channels/scoring";
+import { fmtAgo } from "@/lib/topics/channels/text";
 import { Badge, Empty, PageHeader, PERSONA_LABEL, PLATFORM, ScoreBar, VERIFICATION } from "@/components/ui";
 import { RelatedKeywords } from "@/components/RelatedKeywords";
 import { INTENT_LABEL, type Intent } from "@/lib/topics/scoring";
@@ -9,11 +13,63 @@ import { formatNumber } from "@/lib/util";
 
 export const dynamic = "force-dynamic";
 
-export default async function TopicsPage({ searchParams }: { searchParams: Promise<{ status?: string; all?: string }> }) {
+const ORIGINS = [
+  ["", "전체"],
+  ["autocomplete", "🔎 검색어 기반"],
+  ["channels", "📡 실시간 채널"],
+] as const;
+
+function ChannelEvidence({ s }: { s: ChannelTopicSignals }) {
+  const m = s.metrics;
+  return (
+    <div className="flex flex-col gap-1 text-xs">
+      <div className="flex flex-wrap items-center gap-1">
+        {(m?.channels ?? []).map((c) => (
+          <span key={c} className="badge bg-sky-50 text-sky-700">{CHANNEL_LABEL[c] ?? c}</span>
+        ))}
+        {(m?.trendPct ?? 0) >= DEFAULT_CHANNEL_CONFIG.googleTrends.instantPct && <span className="badge bg-red-50 text-red-700">🔥 즉시 소재</span>}
+        {s.preempt && <span className="badge bg-violet-50 text-violet-700" title="네이트·트렌드·다음에는 있는데 네이버 랭킹·홈판에는 아직 없음 (발행 전 네이버 검색으로 한 번 더 확인)">🚀 선점 후보</span>}
+      </div>
+      <ul className="list-disc pl-4 text-gray-600">
+        {s.reasons.map((r) => (
+          <li key={r}>{r}</li>
+        ))}
+      </ul>
+      <details>
+        <summary className="cursor-pointer text-gray-500">수집 근거 {s.evidence.length}건</summary>
+        <ul className="mt-1 flex flex-col gap-0.5 text-gray-600">
+          {s.evidence.map((e, i) => (
+            <li key={i}>
+              <span className="text-gray-400">{e.channelLabel} · {e.source}:</span>{" "}
+              {e.url ? <a className="text-indigo-600 hover:underline" href={e.url} target="_blank" rel="noreferrer">{e.title}</a> : e.title}
+              <span className="text-gray-400">
+                {[e.press, e.growthPct ? `검색량 ${formatNumber(e.growthPct)}%↑` : null, e.views ? `조회수 ${formatNumber(e.views)}` : null, e.ageMinutes != null ? fmtAgo(e.ageMinutes) : null, e.clusterSize && e.clusterSize > 1 ? `같은 사건 ${e.clusterSize}건` : null]
+                  .filter(Boolean)
+                  .map((x) => ` · ${x}`)
+                  .join("")}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {s.ai?.outline?.length ? <p className="mt-1 text-gray-500">AI 구성안: {s.ai.outline.join(" → ")}</p> : null}
+        {s.ai?.caution ? <p className="text-gray-500">주의: {s.ai.caution}</p> : null}
+        <p className="mt-1 text-gray-400">수집 {new Date(s.collectedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</p>
+      </details>
+    </div>
+  );
+}
+
+export default async function TopicsPage({ searchParams }: { searchParams: Promise<{ status?: string; all?: string; origin?: string }> }) {
   const sp = await searchParams;
   const status = sp.status ?? "NEW";
   const showAll = sp.all === "1";
-  const verificationFilter = showAll ? {} : { verification: { not: "UNVERIFIED" } };
+  const origin = sp.origin === "channels" || sp.origin === "autocomplete" ? sp.origin : "";
+  const qs = (o: Record<string, string>) => {
+    const p = new URLSearchParams({ status, ...(showAll ? { all: "1" } : {}), ...(origin ? { origin } : {}), ...o });
+    for (const [k, v] of [...p]) if (!v) p.delete(k);
+    return `/topics?${p}`;
+  };
+  const verificationFilter = { ...(showAll ? {} : { verification: { not: "UNVERIFIED" } }), ...(origin ? { origin } : {}) };
   const sources = (
     await db.post.findMany({
       where: { status: { in: ["DRAFT", "PRIVATE", "APPROVED", "PUBLISHED"] } },
@@ -24,26 +80,37 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
   ).map((p) => ({ id: p.id, title: p.title, platform: p.platform, account: p.account?.name ?? "-" }));
   const [topics, hidden, accounts, running] = await Promise.all([
     db.topic.findMany({ where: { status, ...verificationFilter }, orderBy: [{ confidence: "desc" }, { totalScore: "desc" }], take: 100 }),
-    showAll ? Promise.resolve(0) : db.topic.count({ where: { status, verification: "UNVERIFIED" } }),
+    showAll ? Promise.resolve(0) : db.topic.count({ where: { status, verification: "UNVERIFIED", ...(origin ? { origin } : {}) } }),
     db.account.findMany({ where: { active: true, platform: { in: ["BLOGGER", "NAVER"] } }, select: { id: true, name: true, platform: true } }),
-    db.job.count({ where: { type: "topic.discover", status: { in: ["QUEUED", "RUNNING"] } } }),
+    db.job.count({ where: { type: { in: ["topic.discover", "topic.channels"] }, status: { in: ["QUEUED", "RUNNING"] } } }),
   ]);
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="주제 발굴"
-        desc="자동완성으로 후보를 모으고, 네이버 검색광고(검색량·광고경쟁도)·블로그 문서수·데이터랩 트렌드 같은 공식 데이터로 검증해 우선순위를 매깁니다."
+        desc="두 가지 방식: ① 검색어 기반 — 자동완성 후보를 네이버 검색광고·블로그 문서수·데이터랩 같은 공식 데이터로 검증 ② 실시간 채널 — 네이버 홈판·랭킹·네이트·구글 트렌드·다음·구글 뉴스에서 지금 화제인 소재를 교차검증."
         actions={<AutoRefresh active={running > 0} />}
       />
-      <DiscoverForm />
+      <div className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold text-gray-700">🔎 검색어 기반 발굴 <span className="font-normal text-gray-400">— 꾸준히 검색되는 키워드 (정보성·에버그린)</span></h2>
+        <DiscoverForm />
+      </div>
+      <div className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold text-gray-700">📡 실시간 채널 발굴 <span className="font-normal text-gray-400">— 오늘 여러 채널에서 동시에 화제인 소재 (이슈·홈판 노출용)</span></h2>
+        <ChannelDiscoverForm />
+      </div>
 
-      <div className="flex gap-2 text-sm">
+      <div className="flex flex-wrap gap-2 text-sm">
         {[["NEW", "신규"], ["USED", "원고 작성됨"], ["DISMISSED", "보류"]].map(([k, l]) => (
-          <a key={k} href={`/topics?status=${k}${showAll ? "&all=1" : ""}`} className={`rounded-lg px-3 py-1.5 ${status === k ? "bg-indigo-600 text-white" : "bg-white text-gray-700 border"}`}>{l}</a>
+          <a key={k} href={qs({ status: k })} className={`rounded-lg px-3 py-1.5 ${status === k ? "bg-indigo-600 text-white" : "bg-white text-gray-700 border"}`}>{l}</a>
         ))}
         <span className="mx-2 text-gray-300">|</span>
-        <a href={`/topics?status=${status}${showAll ? "" : "&all=1"}`} className={`rounded-lg px-3 py-1.5 ${showAll ? "bg-gray-800 text-white" : "border bg-white text-gray-700"}`}>
+        {ORIGINS.map(([k, l]) => (
+          <a key={k || "all"} href={qs({ origin: k })} className={`rounded-lg px-3 py-1.5 ${origin === k ? "bg-sky-600 text-white" : "border bg-white text-gray-700"}`}>{l}</a>
+        ))}
+        <span className="mx-2 text-gray-300">|</span>
+        <a href={qs({ all: showAll ? "" : "1" })} className={`rounded-lg px-3 py-1.5 ${showAll ? "bg-gray-800 text-white" : "border bg-white text-gray-700"}`}>
           {showAll ? "미검증 키워드 숨기기" : `미검증 키워드 포함 보기${hidden ? ` (${hidden}개 숨김)` : ""}`}
         </a>
       </div>
@@ -68,29 +135,53 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
               </tr>
             </thead>
             <tbody>
-              {topics.map((t) => (
+              {topics.map((t) => {
+                const ch = t.origin === "channels" ? (t.signals as unknown as ChannelTopicSignals | null) : null;
+                return (
                 <tr key={t.id}>
                   <td>
                     <span className="rounded-md bg-indigo-50 px-2 py-1 text-sm font-bold text-indigo-700">{Math.round(t.totalScore)}</span>
-                    <div className="mt-1 text-[10px] text-gray-400" title="검색량·경쟁·트렌드 중 실제 데이터로 확인된 지표 수">확인 {t.confidence}/3</div>
+                    {ch ? (
+                      <div className="mt-1 text-[10px] text-gray-400" title="실시간 채널 교차검증 점수 (0~100, 수익 예측 아님)">📡 채널 {ch.metrics?.channels.length ?? 0}개</div>
+                    ) : (
+                      <div className="mt-1 text-[10px] text-gray-400" title="검색량·경쟁·트렌드 중 실제 데이터로 확인된 지표 수">확인 {t.confidence}/3</div>
+                    )}
                   </td>
                   <td className="max-w-md">
                     <div className="font-medium">{t.title}</div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-gray-500">
-                      <Badge map={VERIFICATION} value={t.verification} />
-                      <b>{t.keyword}</b> · {t.tool} · {PERSONA_LABEL[t.persona] ?? t.persona} · {INTENT_LABEL[t.intent as Intent] ?? t.intent}
+                      {ch ? (
+                        // 검색량 검증 배지(공식데이터·자동완성 확인)는 채널 소재에 맞지 않아 교차확인 여부로 표시
+                        <span className={`badge ${t.verification === "VERIFIED" ? "bg-emerald-50 text-emerald-700" : "bg-sky-50 text-sky-700"}`}>
+                          {t.verification === "VERIFIED" ? "채널 교차확인" : "단일 채널"}
+                        </span>
+                      ) : (
+                        <Badge map={VERIFICATION} value={t.verification} />
+                      )}
+                      {t.category && <span className="badge bg-amber-50 text-amber-800">{t.category}</span>}
+                      {[<b key="k">{t.keyword}</b>, t.tool || null, PERSONA_LABEL[t.persona] ?? t.persona, INTENT_LABEL[t.intent as Intent] ?? t.intent]
+                        .filter(Boolean)
+                        .flatMap((x, i) => (i ? [" · ", x] : [x]))}
                     </div>
                     {t.angle && <div className="mt-1 text-xs text-gray-600">관점: {t.angle}</div>}
-                    {t.rationale && <div className="mt-1 text-xs text-gray-600">📊 {t.rationale}</div>}
+                    {!ch && t.rationale && <div className="mt-1 text-xs text-gray-600">📊 {t.rationale}</div>}
                   </td>
-                  <td className="whitespace-nowrap text-xs tabular-nums">
-                    <span className="whitespace-nowrap">월 {t.searchVolume != null ? formatNumber(t.searchVolume) : <span className="text-gray-400">미확인</span>}</span>
-                    <br />
-                    <span className="whitespace-nowrap">문서 {t.documentCount != null ? formatNumber(t.documentCount) : <span className="text-gray-400">미확인</span>}</span>
-                  </td>
-                  <td><ScoreBar value={t.competitionScore} /></td>
-                  <td><ScoreBar value={t.monetizationScore} /></td>
-                  <td><ScoreBar value={t.trendScore} /></td>
+                  {ch ? (
+                    <td colSpan={4} className="max-w-lg">
+                      <ChannelEvidence s={ch} />
+                    </td>
+                  ) : (
+                    <>
+                      <td className="whitespace-nowrap text-xs tabular-nums">
+                        <span className="whitespace-nowrap">월 {t.searchVolume != null ? formatNumber(t.searchVolume) : <span className="text-gray-400">미확인</span>}</span>
+                        <br />
+                        <span className="whitespace-nowrap">문서 {t.documentCount != null ? formatNumber(t.documentCount) : <span className="text-gray-400">미확인</span>}</span>
+                      </td>
+                      <td><ScoreBar value={t.competitionScore} /></td>
+                      <td><ScoreBar value={t.monetizationScore} /></td>
+                      <td><ScoreBar value={t.trendScore} /></td>
+                    </>
+                  )}
                   <td><Badge map={PLATFORM} value={t.targetPlatform} /></td>
                   <td className="min-w-48">
                     <div className="flex flex-col items-start gap-2">
@@ -100,7 +191,8 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -113,6 +205,8 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
         ⚠️ 우선순위 점수는 <b>무엇부터 쓸지 정하는 내부 정렬 지표</b>이며 수익·트래픽 예측이 아닙니다. 공식 데이터로 확인하지 못한 지표는 &quot;미확인&quot;으로 두고 점수에서 제외합니다.
         <br />
         경쟁: 문서수÷검색량(포화도)이 낮을수록 높음 · 수익화: 광고경쟁도(있을 때)·검색의도·제휴상품 연관성 · 트렌드: 데이터랩 최근 4주 추이.
+        <br />
+        📡 실시간 채널 점수(0~100)는 참여 채널 수·기사 신선도·네이버 랭킹·조회수·구글 트렌드 급등률 등 <b>수집한 값만</b>으로 계산한 화제성 지표이며, 수익 예측이 아닙니다. 검색량·문서수는 이 방식으로 알 수 없어 미확인입니다.
       </p>
     </div>
   );

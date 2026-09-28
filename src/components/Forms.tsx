@@ -3,6 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Spinner, waitJobs } from "./ActionButton";
+import { CATEGORY_CHOICES } from "@/lib/topics/channels/config";
+import { NO_RESTRICTION } from "@/lib/topics/channels/filters";
+import type { ChannelId } from "@/lib/topics/channels/types";
 
 type AccountOpt = { id: string; name: string; platform: string };
 
@@ -84,6 +87,64 @@ export function DiscoverForm() {
       </div>
       <button className="btn-primary" disabled={busy}>{busy && <Spinner />}🔎 주제 발굴</button>
       {msg && <p className="text-xs text-gray-500 md:col-span-5">{msg}</p>}
+    </form>
+  );
+}
+
+const CHANNEL_OPTIONS: [ChannelId, string][] = [
+  ["naver_home", "네이버 홈판"],
+  ["naver_ranking", "네이버 랭킹"],
+  ["nate", "네이트"],
+  ["google_trends", "구글 트렌드"],
+  ["daum", "다음 뉴스"],
+  ["google_news", "구글 뉴스"],
+];
+
+/** 실시간 6채널 교차검증 발굴 (contents-finder 방식) */
+export function ChannelDiscoverForm() {
+  const { busy, msg, submit } = useSubmit();
+  const [category, setCategory] = useState("비즈니스·경제");
+  const [domain, setDomain] = useState("");
+  const [limit, setLimit] = useState(10);
+  const [channels, setChannels] = useState<ChannelId[]>(CHANNEL_OPTIONS.map(([c]) => c));
+  return (
+    <form
+      className="card grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit("/api/topics/discover-channels", { category, domain, limit, channels });
+      }}
+    >
+      <p className="text-xs text-gray-500 md:col-span-3">
+        지금 여러 채널에서 동시에 화제인 소재를 찾아 같은 사건끼리 묶고, 참여 채널 수·신선도·랭킹·트렌드 급등률로 점수를 매겨요. 부정 사건·정치 이슈는 제외하고,
+        고른 카테고리에 맞는 소재만 저장합니다. 수집에 3~5분 걸려요.
+      </p>
+      <div>
+        <label className="label">블로그 카테고리 (네이버 32개)</label>
+        <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
+          {CATEGORY_CHOICES.map((c) => (
+            <option key={c} value={c}>{c === NO_RESTRICTION ? `${c} (전체 보기)` : c}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="label">개수</label>
+        <input className="input w-20" type="number" min={1} max={30} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
+      </div>
+      <button className="btn-primary" disabled={busy || !channels.length}>{busy && <Spinner />}📡 실시간 채널에서 발굴</button>
+      <div className="md:col-span-3">
+        <label className="label">블로그 주제 설명 (선택 — 비우면 카테고리 기준. AI 가 제목·구성안을 이 주제에 맞춰요)</label>
+        <input className="input" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="예: 경제·생활 혜택 정보 (AI 도구와 무관, 정확한 사실 기반 생활 정보 블로그)" />
+      </div>
+      <div className="flex flex-wrap gap-2 md:col-span-3">
+        {CHANNEL_OPTIONS.map(([c, label]) => (
+          <label key={c} className={`cursor-pointer rounded-lg border px-2 py-1 text-xs ${channels.includes(c) ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-200"}`}>
+            <input type="checkbox" className="mr-1" checked={channels.includes(c)} onChange={(e) => setChannels(e.target.checked ? [...channels, c] : channels.filter((x) => x !== c))} />
+            {label}
+          </label>
+        ))}
+      </div>
+      {msg && <p className="text-xs text-gray-500 md:col-span-3">{msg}</p>}
     </form>
   );
 }

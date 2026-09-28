@@ -9,7 +9,7 @@ import { jobStore } from "../src/lib/jobs/context";
 import { ManualPendingError } from "../src/lib/llm/manual";
 import { handlers } from "../src/lib/jobs/handlers";
 import { closeBrowser } from "../src/lib/browser";
-import { env } from "../src/lib/env";
+import { env, type CronName } from "../src/lib/env";
 import { providerLabel, routeFor } from "../src/lib/llm";
 import { db } from "../src/lib/db";
 
@@ -47,13 +47,13 @@ async function loop() {
   }
 }
 
-function schedule(name: "CRON_TOPIC_DISCOVERY" | "CRON_ANALYTICS_SYNC" | "CRON_INSIGHTS", type: JobType) {
+function schedule(name: CronName, type: JobType, payload: Record<string, unknown> = {}) {
   const expr = env.cron(name);
   if (!expr) return;
   new Cron(expr, { timezone: "Asia/Seoul" }, async () => {
     // 같은 유형이 이미 대기/실행 중이거나 수동 입력을 기다리면 중복 등록하지 않음
     const pending = await db.job.count({ where: { type, status: { in: ["QUEUED", "RUNNING", "WAITING"] } } });
-    if (!pending) await enqueue(type, {});
+    if (!pending) await enqueue(type, payload);
   });
   console.log(`⏰ ${type} 스케줄: ${expr} (Asia/Seoul)`);
 }
@@ -62,6 +62,7 @@ async function main() {
   console.log(`🛠  워커 시작 — 원고: ${providerLabel(await routeFor("write"))} · 가벼운 작업: ${providerLabel(await routeFor("light"))}`);
   await recoverStaleJobs();
   schedule("CRON_TOPIC_DISCOVERY", "topic.discover");
+  schedule("CRON_CHANNEL_DISCOVERY", "topic.channels", { category: env.channelDiscoveryCategory });
   schedule("CRON_ANALYTICS_SYNC", "analytics.sync");
   schedule("CRON_INSIGHTS", "insights.generate");
   await loop();

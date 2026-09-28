@@ -2,6 +2,7 @@ import type { z } from "zod";
 import { ManuscriptSchema, SectionSchema } from "../content/types";
 import { ReviewSchema } from "../content/review";
 import { IdeaSchema } from "../topics/discover";
+import { ChannelIdeaSchema } from "../topics/channels/discover";
 import { CardNewsSchema } from "../cardnews";
 import { StrategySchema } from "../insights/engine";
 
@@ -11,6 +12,7 @@ export const SCHEMAS: Record<string, z.ZodType> = {
   section: SectionSchema,
   factReview: ReviewSchema,
   topicIdeas: IdeaSchema,
+  channelIdeas: ChannelIdeaSchema,
   cardnews: CardNewsSchema,
   strategy: StrategySchema,
 };

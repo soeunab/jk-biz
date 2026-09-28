@@ -64,7 +64,12 @@ model Topic {
   /// VERIFIED | SUGGESTED | UNVERIFIED
   verification      String   @default("UNVERIFIED")
   rationale         String   @default("")
-  signals           Json?     
+  /// 발굴 근거. origin=channels 면 채널별 수집 근거·점수 breakdown·뉴스 링크 (src/lib/topics/channels/discover.ts groupSignals)
+  signals           Json?
+  /// 발굴 방식: autocomplete(자동완성·검색량 검증) | channels(실시간 6채널 교차검증)
+  origin            String   @default("autocomplete")
+  /// 네이버 블로그 32개 카테고리 (실시간 채널 발굴에서 분류, 자동완성 발굴은 "")
+  category          String   @default("")
   /// NEW | SELECTED | USED | DISMISSED
   status            String   @default("NEW")
   createdAt         DateTime @default(now())
@@ -74,6 +79,7 @@ model Topic {
 
   @@index([status, totalScore])
   @@index([normalizedKeyword])
+  @@index([origin, status])
 }
 
 /// 블로그 원고 (플랫폼·계정별로 1개)

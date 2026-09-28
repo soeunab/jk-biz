@@ -12,3 +12,6 @@ storage/
 
 # 구글 클라우드 콘솔에서 받는 OAuth 클라이언트 시크릿(브라우저 다운로드가 이 폴더에 저장될 수 있음)
 client_secret_*.json
+
+# 파이썬 참고 코드 실행 시 생기는 캐시 (tests/fixtures/channels/gen_expected.py)
+__pycache__/

@@ -9,7 +9,10 @@ Next.js 16 App Router + Prisma(SQLite) + 워커(`scripts/worker.ts`, DB 작업 �
 - `src/lib/publishers/` — `blogger.ts`(API), `naver.ts`(Playwright 로 스마트에디터 조작, `SELECTORS`), `google.ts`(OAuth)
 - `src/lib/analytics/` — `google.ts`(GA4·서치콘솔·애드센스 조회), `sync.ts`(DB 동기화), `queries.ts`
 - `src/lib/jobs/` — 작업 큐, `context.ts`(수동 모드용 작업 컨텍스트)
-- `scripts/` — worker, naver-login, naver-check, check-ai, check-concepts, mcp-server
+- `src/lib/topics/` — 주제 발굴 두 방식: `discover.ts`(검색어 기반: 자동완성 → 검색광고·데이터랩 검증) / `channels/`(실시간 6채널 교차검증, contents-finder 포팅)
+  - `channels/collectors/*.ts` 채널별 수집(Playwright, `scripts.ts` 에 page.evaluate JS), `crossref.ts` 소재 묶기, `scoring.ts` 점수·근거 문장, `filters.ts` 32개 카테고리·부정/정치 필터, `discover.ts` 파이프라인·저장
+  - 원본 파이썬: `reference/contents-finder/` (포팅 확인용 참고 자료). 동등성은 `tests/channels-parity.test.ts` 가 원본 실행 결과(`tests/fixtures/channels/expected.json`, `gen_expected.py` 로 생성)와 비교
+- `scripts/` — worker, naver-login, naver-check, channels-check, check-ai, check-concepts, mcp-server
 
 ## 명령
 ```bash
@@ -18,6 +21,7 @@ npm run typecheck
 npm run build
 npm run check:ai    # 작업별 담당 AI·Claude Code 로그인·Ollama 응답 확인 (--quick)
 npm run naver:check -- <계정ID>   # 네이버 에디터 선택자 점검 (글은 쓰지 않음)
+npm run channels:check [-- nate daum] [--save]   # 실시간 6채널 수집 점검 (DB 저장 없음)
 ```
 
 ## 지켜야 할 것
@@ -41,6 +45,12 @@ npm run naver:check -- <계정ID>   # 네이버 에디터 선택자 점검 (글�
 3. Playwright MCP 로 `https://blog.naver.com/PostWriteForm.naver?blogId=<blogId>` 를 열어(프로필에 네이버 로그인 필요) 해당 요소를 찾고, 안정적인 선택자(클래스 일부 `[class*=...]`, `data-*`, 텍스트)를 고릅니다.
 4. `src/lib/publishers/naver.ts` 의 `SELECTORS` 배열 **앞쪽에 새 선택자를 추가**(기존 것은 남겨 두기) → `npm run naver:check` 로 ✅ 확인.
 5. 대시보드에서 테스트 원고 1편을 **비공개 발행**해 끝까지 되는지 확인. 공개 발행 시험은 하지 마세요.
+
+## 실시간 채널 수집이 깨졌을 때
+1. `npm run channels:check -- <채널>` → 🌐(접속 불가 = 네트워크 문제)인지 ❌(화면은 열렸는데 0건 = 선택자 문제)인지 확인. `--save` 면 `storage/channels/check-*/` 에 HTML·스크린샷.
+2. Playwright MCP 로 해당 URL(`channels/config.ts`)을 열어 목록 요소를 찾고, `channels/collectors/scripts.ts` 의 추출 JS 선택자를 고칩니다.
+3. `tests/fixtures/channels/pages.html` 도 새 구조로 고쳐 `npm test` 로 추출 결과를 고정한 뒤 `channels:check` 로 ✅ 확인.
+- 점수 공식·근거 문장은 원본과 동일해야 합니다. 바꿀 땐 의도적인 변경인지 확인하고 `expected.json` 과의 차이를 테스트에 명시하세요.
 
 ## 분석 데이터가 이상할 때
 1. `db_summary` 로 계정의 구글 연결·GA4 속성 ID·서치콘솔 URL 설정 확인.
