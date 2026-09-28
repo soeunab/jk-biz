@@ -65,9 +65,30 @@ ${r.prompt}
 ${JSON.stringify(r.schemaJson, null, 1)}`;
 }
 
+const TYPE_KO: Record<string, string> = { string: "문자열", number: "숫자", boolean: "true/false", array: "목록([ ])", object: "객체({ })", int: "정수" };
+
+/** 붙여 넣은 결과의 형식 오류를 사람이 읽을 수 있는 한국어로 (어느 항목이 왜 틀렸는지) */
 export function formatZodError(e: z.ZodError) {
-  return e.issues
-    .slice(0, 10)
-    .map((i) => `${i.path.join(".") || "(전체)"}: ${i.message}`)
-    .join("\n");
+  const lines = e.issues.slice(0, 10).map((i) => {
+    const where = i.path.join(".") || "(전체)";
+    const iss = i as { code: string; expected?: string; values?: unknown[]; message: string };
+    switch (iss.code) {
+      case "invalid_type":
+        return /received undefined/.test(iss.message)
+          ? `${where}: 항목이 빠졌어요 (${TYPE_KO[iss.expected ?? ""] ?? iss.expected} 필요)`
+          : `${where}: ${TYPE_KO[iss.expected ?? ""] ?? iss.expected} 형식이어야 해요`;
+      case "too_small":
+        return `${where}: 너무 짧거나 개수가 부족해요`;
+      case "too_big":
+        return `${where}: 너무 길거나 개수가 많아요`;
+      case "invalid_value":
+        return `${where}: ${(iss.values ?? []).map(String).join(", ")} 중 하나여야 해요`;
+      case "unrecognized_keys":
+        return `${where}: 스키마에 없는 항목이 있어요`;
+      default:
+        return `${where}: ${iss.message}`;
+    }
+  });
+  if (e.issues.length > 10) lines.push(`…외 ${e.issues.length - 10}개`);
+  return lines.join("\n");
 }

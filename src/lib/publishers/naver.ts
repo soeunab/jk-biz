@@ -67,7 +67,7 @@ async function pasteHtml(frame: Frame, html: string) {
   await frame.page().waitForTimeout(700);
 }
 
-async function openEditor(accountId: string, url: string) {
+export async function openEditor(accountId: string, url: string) {
   if (!hasNaverSession(accountId)) {
     throw new Error(`네이버 로그인 세션이 없습니다. 터미널에서 'npm run naver:login -- ${accountId}' 를 실행해 로그인해 주세요.`);
   }
@@ -86,6 +86,8 @@ async function openEditor(accountId: string, url: string) {
   await tryClick(frame, SELECTORS.helpClose);
   return { browser, context, page, frame };
 }
+
+const checkHint = (accountId: string) => `\n→ 네이버 화면이 바뀌었을 수 있어요. 'npm run naver:check -- ${accountId}' 로 선택자를 점검하세요 (CLAUDE.md 의 '네이버 자동화가 깨졌을 때' 참고).`;
 
 async function debugShot(page: Page, label: string) {
   await mkdir(STORAGE_DIR, { recursive: true });
@@ -158,7 +160,7 @@ export async function naverPublishPrivate(postId: string, log: (m: string) => un
     return { remoteId: logNo, remoteUrl: logNo ? `https://blog.naver.com/${account.externalId}/${logNo}` : url };
   } catch (e) {
     const shot = await debugShot(page, "publish");
-    throw new Error(`${(e as Error).message}\n(오류 화면: ${shot})`);
+    throw new Error(`${(e as Error).message}\n(오류 화면: ${shot})${checkHint(account.id)}`);
   } finally {
     await browser.close();
   }
@@ -183,7 +185,7 @@ export async function naverMakePublic(postId: string, log: (m: string) => unknow
     return { remoteId: post.remoteId, remoteUrl: `https://blog.naver.com/${account.externalId}/${post.remoteId}` };
   } catch (e) {
     const shot = await debugShot(page, "public");
-    throw new Error(`${(e as Error).message}\n(오류 화면: ${shot})`);
+    throw new Error(`${(e as Error).message}\n(오류 화면: ${shot})${checkHint(account.id)}`);
   } finally {
     await browser.close();
   }
@@ -199,4 +201,84 @@ export async function naverRss(blogId: string): Promise<{ title: string; link: s
     link: (m[1].match(/<link>([\s\S]*?)<\/link>/)?.[1] ?? "").trim(),
     pubDate: (m[1].match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] ?? "").trim(),
   }));
+}
+
+/** 선택자 점검 결과 한 줄 */
+export type SelectorCheck = {
+  key: keyof typeof SELECTORS;
+  /** editor = 글쓰기 화면 / dialog = 발행 설정 창 / popup = 뜰 때만 있는 안내창(없어도 정상) */
+  stage: "editor" | "dialog" | "popup";
+  found: string | null;
+  count: number;
+  visible: boolean;
+};
+
+const STAGE: Record<keyof typeof SELECTORS, SelectorCheck["stage"]> = {
+  helpClose: "popup",
+  draftPopupCancel: "popup",
+  title: "editor",
+  body: "editor",
+  imageButton: "editor",
+  uploadedImage: "popup",
+  publishOpen: "editor",
+  saveDraft: "editor",
+  tagInput: "dialog",
+  privateRadio: "dialog",
+  publicRadio: "dialog",
+  publishConfirm: "dialog",
+};
+
+/** 화면(프레임)에서 SELECTORS 각 항목을 찾아 봅니다 — 클릭·입력은 하지 않음 */
+export async function checkSelectors(frame: Frame | Page, stages: SelectorCheck["stage"][]): Promise<SelectorCheck[]> {
+  const out: SelectorCheck[] = [];
+  for (const key of Object.keys(SELECTORS) as (keyof typeof SELECTORS)[]) {
+    if (!stages.includes(STAGE[key])) continue;
+    let hit: SelectorCheck = { key, stage: STAGE[key], found: null, count: 0, visible: false };
+    for (const sel of SELECTORS[key]) {
+      const loc = frame.locator(sel);
+      const count = await loc.count().catch(() => 0);
+      if (!count) continue;
+      const visible = await loc.first().isVisible().catch(() => false);
+      hit = { key, stage: STAGE[key], found: sel, count, visible };
+      if (visible) break;
+    }
+    out.push(hit);
+  }
+  return out;
+}
+
+/**
+ * 네이버 글쓰기 화면을 저장된 로그인 세션으로 열어 선택자가 아직 맞는지 점검합니다.
+ * 글은 쓰지 않습니다. 발행 설정 창은 열어 보기만 하고(확인 버튼은 누르지 않음) 닫습니다.
+ * 결과 스크린샷·HTML 은 storage/naver/check-<시각>.* 에 저장 → Playwright MCP 로 새 선택자를 찾을 때 출발점.
+ */
+export async function runNaverCheck(accountId: string, opts: { url?: string } = {}) {
+  const account = await db.account.findUnique({ where: { id: accountId } });
+  if (!opts.url && !account?.externalId) throw new Error(`계정 ${accountId} 의 네이버 blogId(externalId)가 없습니다.`);
+  const url = opts.url ?? `https://blog.naver.com/PostWriteForm.naver?blogId=${account!.externalId}`;
+  // openEditor 가 안내창을 먼저 닫으므로, 안내창 선택자는 닫기 전에 따로 확인할 수 없어 "뜰 때만 있음"으로 표시합니다.
+  const { browser, page, frame } = await openEditor(accountId, url);
+  try {
+    await first(frame, SELECTORS.title, 15_000).catch(() => null);
+    const results = await checkSelectors(frame, ["editor", "popup"]);
+    const publishOpen = results.find((r) => r.key === "publishOpen");
+    let dialogOpened = false;
+    if (publishOpen?.visible) {
+      await frame.locator(publishOpen.found!).first().click();
+      await page.waitForTimeout(1200);
+      dialogOpened = true;
+    }
+    results.push(...(await checkSelectors(frame, ["dialog"])));
+    await mkdir(STORAGE_DIR, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const screenshot = path.join(STORAGE_DIR, `check-${stamp}.png`);
+    const htmlFile = path.join(STORAGE_DIR, `check-${stamp}.html`);
+    await page.screenshot({ path: screenshot, fullPage: true }).catch(() => undefined);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(htmlFile, await frame.content().catch(() => ""), "utf8");
+    const missing = results.filter((r) => r.stage !== "popup" && !r.visible).map((r) => r.key);
+    return { url: page.url(), dialogOpened, results, missing, screenshot, htmlFile };
+  } finally {
+    await browser.close();
+  }
 }

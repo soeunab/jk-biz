@@ -1,10 +1,8 @@
-import { google } from "googleapis";
 import type { Account } from "@prisma/client";
 import { db } from "../db";
-import { accountSettings } from "../content/service";
-import { authedClient } from "../publishers/google";
+import { fetchAdsenseRows, fetchGa4Rows, fetchGscRows, ga4PropertyOf, gscSiteOf } from "./google";
 import { naverRss } from "../publishers/naver";
-import { asObject, daysAgo, ymd } from "../util";
+import { asObject, daysAgo } from "../util";
 import type { JobContext } from "../jobs/queue";
 
 type Log = (m: string) => unknown;
@@ -33,26 +31,12 @@ async function upsertPostMetric(postId: string, date: Date, source: string, data
 
 /** GA4: 날짜·페이지별 조회수 */
 async function syncGa4(account: Account, log: Log) {
-  const propertyId = accountSettings(account.settings).ga4PropertyId;
-  if (!propertyId) return log(`[${account.name}] GA4 속성 ID 미설정 — 건너뜀`);
-  const auth = await authedClient(account.id);
-  const ga = google.analyticsdata({ version: "v1beta", auth });
-  const res = await ga.properties.runReport({
-    property: `properties/${propertyId}`,
-    requestBody: {
-      dateRanges: [{ startDate: "30daysAgo", endDate: "yesterday" }],
-      dimensions: [{ name: "date" }, { name: "pagePath" }],
-      metrics: [{ name: "screenPageViews" }, { name: "activeUsers" }],
-      limit: "10000",
-    },
-  });
+  if (!ga4PropertyOf(account)) return log(`[${account.name}] GA4 속성 ID 미설정 — 건너뜀`);
+  const rows = await fetchGa4Rows(account, { days: 30 });
   const map = await postsByPath(account.id);
   const daily = new Map<string, { pv: number; users: number }>();
   let matched = 0;
-  for (const row of res.data.rows ?? []) {
-    const [d, p] = (row.dimensionValues ?? []).map((v) => v.value ?? "");
-    const pv = Number(row.metricValues?.[0]?.value ?? 0);
-    const users = Number(row.metricValues?.[1]?.value ?? 0);
+  for (const { date: d, pagePath: p, pageviews: pv, users } of rows) {
     const cur = daily.get(d) ?? { pv: 0, users: 0 };
     daily.set(d, { pv: cur.pv + pv, users: cur.users + users });
     const postId = map.get(p.replace(/\/$/, ""));
@@ -69,36 +53,32 @@ async function syncGa4(account: Account, log: Log) {
       update: { pageviews: v.pv, visitors: v.users },
     });
   }
-  await log(`[${account.name}] GA4 ${res.data.rows?.length ?? 0}행 동기화 (글 매칭 ${matched})`);
+  await log(`[${account.name}] GA4 ${rows.length}행 동기화 (글 매칭 ${matched})`);
 }
 
 /** 서치콘솔: 날짜·페이지별 클릭/노출/순위 + 페이지별 상위 검색어 */
 async function syncGsc(account: Account, log: Log) {
-  const siteUrl = accountSettings(account.settings).gscSiteUrl ?? account.url ?? undefined;
-  if (!siteUrl) return log(`[${account.name}] 서치콘솔 사이트 URL 미설정 — 건너뜀`);
-  const auth = await authedClient(account.id);
-  const sc = google.searchconsole({ version: "v1", auth });
-  const range = { startDate: ymd(daysAgo(30)), endDate: ymd(daysAgo(2)) };
-  const res = await sc.searchanalytics.query({ siteUrl, requestBody: { ...range, dimensions: ["date", "page"], rowLimit: 25000 } });
+  if (!gscSiteOf(account)) return log(`[${account.name}] 서치콘솔 사이트 URL 미설정 — 건너뜀`);
+  const rows = await fetchGscRows(account, { days: 30, dimensions: ["date", "page"], rowLimit: 25000 });
   const map = await postsByPath(account.id);
-  for (const row of res.data.rows ?? []) {
-    const [d, page] = row.keys ?? [];
+  for (const row of rows) {
+    const [d, page] = row.keys;
     const postId = map.get(pathOf(page) ?? "");
     if (!postId) continue;
     await upsertPostMetric(postId, new Date(`${d}T00:00:00`), "GSC", {
-      clicks: row.clicks ?? 0,
-      impressions: row.impressions ?? 0,
-      position: row.position ?? undefined,
+      clicks: row.clicks,
+      impressions: row.impressions,
+      position: row.position || undefined,
     });
   }
-  const q = await sc.searchanalytics.query({ siteUrl, requestBody: { ...range, dimensions: ["page", "query"], rowLimit: 5000 } });
+  const q = await fetchGscRows(account, { days: 30, dimensions: ["page", "query"], rowLimit: 5000 });
   const byPost = new Map<string, { query: string; clicks: number; impressions: number; position: number }[]>();
-  for (const row of q.data.rows ?? []) {
-    const [page, query] = row.keys ?? [];
+  for (const row of q) {
+    const [page, query] = row.keys;
     const postId = map.get(pathOf(page) ?? "");
     if (!postId) continue;
     const arr = byPost.get(postId) ?? [];
-    arr.push({ query, clicks: row.clicks ?? 0, impressions: row.impressions ?? 0, position: Math.round((row.position ?? 0) * 10) / 10 });
+    arr.push({ query, clicks: row.clicks, impressions: row.impressions, position: Math.round(row.position * 10) / 10 });
     byPost.set(postId, arr);
   }
   for (const [postId, arr] of byPost) {
@@ -107,43 +87,24 @@ async function syncGsc(account: Account, log: Log) {
       await db.postMetric.update({ where: { id: latest.id }, data: { queries: arr.sort((a, b) => b.impressions - a.impressions).slice(0, 15) } });
     }
   }
-  await log(`[${account.name}] 서치콘솔 ${res.data.rows?.length ?? 0}행, 검색어 ${q.data.rows?.length ?? 0}행 동기화`);
+  await log(`[${account.name}] 서치콘솔 ${rows.length}행, 검색어 ${q.length}행 동기화`);
 }
 
 /** 애드센스: 일별 예상 수익 (도메인별로 계정 매칭) */
 async function syncAdsense(account: Account, log: Log) {
-  const auth = await authedClient(account.id);
-  const adsense = google.adsense({ version: "v2", auth });
-  const accounts = await adsense.accounts.list();
-  const adAccount = accounts.data.accounts?.[0]?.name;
-  if (!adAccount) return log(`[${account.name}] 애드센스 계정 없음 — 건너뜀`);
-  const start = daysAgo(30);
-  const end = daysAgo(1);
-  const res = await adsense.accounts.reports.generate({
-    account: adAccount,
-    dateRange: "CUSTOM",
-    "startDate.year": start.getFullYear(),
-    "startDate.month": start.getMonth() + 1,
-    "startDate.day": start.getDate(),
-    "endDate.year": end.getFullYear(),
-    "endDate.month": end.getMonth() + 1,
-    "endDate.day": end.getDate(),
-    dimensions: ["DATE", "DOMAIN_NAME"],
-    metrics: ["ESTIMATED_EARNINGS"],
-    currencyCode: "KRW",
-  });
-  const host = account.url ? new URL(account.url).hostname : null;
-  let n = 0;
-  for (const row of res.data.rows ?? []) {
-    const [d, domain] = (row.cells ?? []).map((c) => c.value ?? "");
-    if (host && domain && !domain.includes(host) && !host.includes(domain)) continue;
+  let rows;
+  try {
+    rows = await fetchAdsenseRows(account, { days: 30 });
+  } catch (e) {
+    if (/애드센스 계정 없음/.test((e as Error).message)) return log(`[${account.name}] 애드센스 계정 없음 — 건너뜀`);
+    throw e;
+  }
+  for (const { date: d, domain, amount } of rows) {
     const date = new Date(`${d}T00:00:00`);
-    const amount = Number(row.cells?.[2]?.value ?? 0);
     await db.revenue.deleteMany({ where: { accountId: account.id, date, source: "ADSENSE" } });
     await db.revenue.create({ data: { accountId: account.id, date, source: "ADSENSE", amount, note: domain } });
-    n++;
   }
-  await log(`[${account.name}] 애드센스 ${n}일치 수익 동기화`);
+  await log(`[${account.name}] 애드센스 ${rows.length}일치 수익 동기화`);
 }
 
 /** 네이버: RSS 로 공개 전환된 글을 찾아 상태·URL 갱신 (사람이 네이버에서 직접 공개한 경우 대응) */

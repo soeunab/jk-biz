@@ -131,6 +131,21 @@ API 키 방식(`ANTHROPIC_API_KEY`)은 **Claude 구독(Pro/Max)과 별개로 사
 - `DASHBOARD_PASSWORD` 를 설정하면 대시보드 전체에 로그인(Basic Auth)이 걸립니다. 서버를 외부에 공개한다면 **반드시** 설정하세요. (`/media` 이미지 경로만 공개)
 - 계정 토큰은 `APP_SECRET` 기반 AES-256-GCM 으로 암호화해 저장합니다. `APP_SECRET` 은 한 번 정하면 바꾸지 마세요.
 
+### 7) 개발·디버깅용 MCP (선택 — 맥미니의 Claude Code 에서만)
+
+프로젝트 폴더에서 `claude` 를 실행하면 `.mcp.json` 의 MCP 서버가 뜹니다(처음 한 번 승인). 앱 실행과는 무관하고, **Claude Code 가 실제 화면·데이터를 보면서 고칠 수 있게** 하는 도구입니다. 사용 절차는 `CLAUDE.md` 에 있습니다.
+
+| 서버 | 하는 일 | 준비 |
+|---|---|---|
+| `jk-biz` (이 저장소, 읽기 전용) | DB 현황·원고 점검 결과·작업 로그·수동 대기 목록, **서치콘솔·애드센스·GA4 를 API 에서 받아 DB 동기화 값과 비교**, 네이버 선택자 점검 | 없음 (대시보드에서 구글 연결한 토큰 사용) |
+| `playwright` (Microsoft 공식) | 실제 브라우저로 네이버 에디터를 열어 선택자 확인 | 처음 한 번 그 브라우저에서 네이버 로그인 (프로필 `storage/naver/mcp-profile`, git 제외) |
+| `analytics-mcp` (Google 공식 GA4, 읽기 전용) | GA4 보고서 직접 조회 | `brew install pipx` → Cloud Console 에서 Analytics Admin·Data API 사용 → `gcloud auth application-default login --scopes https://www.googleapis.com/auth/analytics.readonly,https://www.googleapis.com/auth/cloud-platform --client-id-file=<OAuth 클라이언트 JSON>` → `~/.zshrc` 에 `export GOOGLE_PROJECT_ID=<프로젝트ID>` |
+| `prisma` (공식) | 스키마 확인·Prisma Studio | 없음. migrate-reset/migrate-dev 는 쓰지 마세요(이 프로젝트는 db push) |
+
+- 서치콘솔·애드센스는 구글 공식 MCP 가 없어, 신뢰도가 제각각인 커뮤니티 서버 대신 `jk-biz` 가 앱과 같은 코드로 조회합니다.
+- 네이버 화면이 바뀌어 자동 발행이 실패하면: `npm run naver:check -- <계정ID>` → 미발견 항목 확인 → Claude Code 에 "네이버 선택자 고쳐줘" (Playwright MCP 로 화면 확인 후 `SELECTORS` 수정).
+- 이 MCP 들은 로그인·인증이 필요한 맥미니에서만 동작합니다(클라우드 세션에서는 확인 불가).
+
 ## 하루 운영 루틴 (권장)
 
 1. **대시보드** → 검수 대기 원고 확인
@@ -185,6 +200,7 @@ storage/                    생성 이미지·네이버 세션 (git 제외)
 
 ```bash
 npm run check:ai  # 작업별 담당 AI·비용, Claude Code 로그인·Ollama 응답 확인 (--quick: 연결만)
+npm run naver:check -- <계정ID>  # 네이버 에디터 선택자 점검 (글은 쓰지 않음)
 npm test          # 단위 테스트 (점수화·SEO 점검·렌더링·유사도·CSV·발전 제안 규칙)
 npm run typecheck
 npm run build

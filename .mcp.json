@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--user-data-dir", "storage/naver/mcp-profile"]
+    },
+    "analytics-mcp": {
+      "command": "pipx",
+      "args": ["run", "analytics-mcp"],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "${HOME}/.config/gcloud/application_default_credentials.json",
+        "GOOGLE_PROJECT_ID": "${GOOGLE_PROJECT_ID:-}"
+      }
+    },
+    "prisma": {
+      "command": "npx",
+      "args": ["prisma", "mcp"]
+    },
+    "jk-biz": {
+      "command": "npx",
+      "args": ["tsx", "scripts/mcp-server.ts"]
+    }
+  }
+}
