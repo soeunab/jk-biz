@@ -1,0 +1,168 @@
+# ============================================================
+# 지원포유 콘텐츠 소재 발굴 - 설정 파일 (contents-finder)
+# 필요한 값만 바꾸면 됩니다. 비워 두거나 지운 항목은 기본값이 적용됩니다.
+# ============================================================
+
+timezone: Asia/Seoul
+
+# 내 블로그 주제 범위 (여기에 속하지 않는 소재는 점수를 깎고 '주제 외'로 표시)
+blog:
+  # 이 값은 프로그램을 실행할 때 대화형으로 고른 카테고리로 매번 덮어써집니다 (finder/analysis/filters.py 의 CATEGORY_LIST 31개 중 1개).
+  # 여기 값은 대화형 입력이 안 되는 환경(비대화형 실행)에서만 쓰이는 기본값입니다.
+  topics_include: ["비즈니스·경제"]
+  guidelines:            # 로컬 AI에게 전달되는 작성 기준
+    photos: 7            # 홈판 노출 글 기준 사진 수
+    min_chars: 1300
+    max_chars: 1900
+
+# 브라우저 (Playwright). channel: chrome = 맥에 설치된 크롬 사용 (별도 다운로드 없음)
+browser:
+  channel: chrome
+  headless: true
+  nav_timeout_sec: 30
+
+# 채널 사용 여부
+channels:
+  naver_home: true
+  naver_ranking: true
+  nate: true
+  google_trends: true
+  daum: true
+  google_news: true
+  creator_advisor: false   # 보조 채널 - 로그인 필요, 기본 OFF
+
+# ---- 1. 네이버 모바일 홈판 ----
+naver_home:
+  url: https://m.naver.com/
+  scroll_times: 20         # 홈판 아래로 내리는 횟수
+  analyze_top: 6           # 상위 N개 글을 열어 제목/사진수/분량/끊은 위치 분석
+
+# ---- 2. 네이버 랭킹 (엔터 '많이 본 뉴스' + 내 주제 섹션) ----
+naver_ranking:
+  analyze_top: 3           # 페이지별 상위 N개 기사 본문 분량/사진수 확인 (페이지별 analyze_top 으로 덮어쓰기 가능)
+  press_rank_max: 5        # '뉴스 랭킹(종합)'은 언론사별 상위 5건 - 몇 위까지 가져올지
+  include_latest: false    # 섹션 '최신 기사' 목록까지 후보에 넣을지 (기본 꺼짐: 헤드라인만)
+  pages:
+    # type: entertain = 조회수가 표시되는 엔터 랭킹 / press = 언론사별 랭킹(종합) / section = 섹션 헤드라인
+    - {name: "엔터 많이 본 뉴스", type: entertain, url: "https://entertain.naver.com/ranking", category: "", analyze_top: 3}
+    - {name: "뉴스 랭킹(종합)",   type: press,      url: "https://news.naver.com/main/ranking/popularDay.naver", category: "", analyze_top: 0}
+    - {name: "경제 섹션",         type: section,    url: "https://news.naver.com/section/101", category: "비즈니스·경제", analyze_top: 2}
+    - {name: "IT/과학 섹션",      type: section,    url: "https://news.naver.com/section/105", category: "IT·컴퓨터", analyze_top: 2}
+    - {name: "사회 섹션",         type: section,    url: "https://news.naver.com/section/102", category: "사회·정치", analyze_top: 2}
+    - {name: "생활/문화 섹션",    type: section,    url: "https://news.naver.com/section/103", category: "", analyze_top: 2}
+
+# ---- 3. 네이트 ----
+nate:
+  keyword_url: https://www.nate.com/
+  pann_url: https://pann.nate.com/
+
+# ---- 4. 구글 트렌드 ----
+google_trends:
+  hours: 24
+  fresh_hours: 4            # 이 시간 이내에 시작된 키워드는 '초신선'으로 표시
+  instant_pct: 1000         # 검색량 증가율이 이 값 이상이면 '당일 즉시 소재'
+  # 카테고리 ID: 내 블로그 주제 라벨
+  categories:
+    3:  "비즈니스·경제"  # 비즈니스 및 금융
+    15: "IT·컴퓨터"     # 과학
+    18: "IT·컴퓨터"     # 기술
+    6:  "게임"          # 게임
+    10: "사회·정치"     # 법률 및 정부
+    9:  "교육·학문"     # 취업 및 교육
+    20: "사회·정치"     # 기후
+    7:  "건강·의학"     # 건강
+    5:  ""              # 식음료 - 기사별 분류(요리·레시피/맛집 등)에 맡김
+    19: ""              # 여행 및 교통 - 기사별 분류(국내여행/세계여행 등)에 맡김
+    2:  "패션·미용"     # 미용 및 패션
+    16: "상품리뷰"      # 쇼핑
+    13: "반려동물"      # 반려동물 및 동물
+    4:  ""              # 엔터테인먼트 - 기사별 분류(드라마/스타·연예인/음악 등)에 맡김
+    14: "사회·정치"     # 정치 (정치 키워드가 있으면 별도로 하드 필터링됨)
+    17: "스포츠"        # 스포츠
+
+# ---- 5. 다음 뉴스 / 구글 뉴스 ----
+daum:
+  fresh_minutes: 180        # 이 시간(분) 이내 기사는 '아직 다뤄지지 않은 소재' 후보
+  pages:
+    - {name: "다음 홈(이 시각 주요뉴스)", url: "https://news.daum.net/", category: ""}
+    - {name: "다음 경제",   url: "https://news.daum.net/economy", category: "비즈니스·경제"}
+    - {name: "다음 IT/과학", url: "https://news.daum.net/tech", category: "IT·컴퓨터"}
+    - {name: "다음 사회",   url: "https://news.daum.net/society", category: "사회·정치"}
+    - {name: "다음 생활",   url: "https://news.daum.net/life", category: ""}
+    - {name: "다음 문화",   url: "https://news.daum.net/culture", category: ""}
+  trend_keywords: true      # 다음 홈 '실시간 트렌드' 키워드도 수집
+
+google_news:
+  per_topic: 40
+  topics:                   # 구글 뉴스 토픽 (RSS) - 라벨: {id, category}
+    "비즈니스":     {id: "CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtdHZHZ0pMVWlnQVAB", category: "비즈니스·경제"}
+    "과학/기술":    {id: "CAAqKAgKIiJDQkFTRXdvSkwyMHZNR1ptZHpWbUVnSnJieG9DUzFJb0FBUAE", category: "IT·컴퓨터"}
+    "엔터테인먼트": {id: "CAAqJggKIiBDQkFTRWdvSUwyMHZNREpxYW5RU0FtdHZHZ0pMVWlnQVAB", category: ""}
+    "건강":         {id: "CAAqIQgKIhtDQkFTRGdvSUwyMHZNR3QwTlRFU0FtdHZLQUFQAQ", category: "건강·의학"}
+    "대한민국":     {id: "CAAqIQgKIhtDQkFTRGdvSUwyMHZNRFp4WkRNU0FtdHZLQUFQAQ", category: ""}
+
+# ---- 6. 네이버 크리에이터 어드바이저 (보조 참고용) ----
+creator_advisor:
+  url: ""                   # 예: 내 블로그 크리에이터 어드바이저 주소를 넣고 --login 으로 1회 로그인
+  note: "7~10일 전 글감이 섞여 있어 트래픽이 끝물일 수 있음 - 메인 수집 채널로 쓰지 않음"
+
+# ---- 필터 ----
+filters:
+  exclude_politics: true
+  # 하드 필터: 부정적 사건/사고 - 추천에서 제외하고 '제외된 이슈'에만 표시
+  negative_hard: ["사망", "숨져", "숨진", "별세", "타계", "사고", "참사", "폭행", "살인", "살해", "성추행", "성폭행", "성범죄",
+                  "자살", "극단적", "화재", "붕괴", "추락", "폭발", "학대", "마약", "구속", "체포", "기소", "재판", "실종", "시신",
+                  "전쟁", "테러", "지진", "확진", "감염", "비상사태", "갑질", "사기", "횡령", "음주운전", "뺑소니", "故", "추모", "부고", "피해자",
+                  "해고", "참변", "급발진", "돌진", "징계", "파면", "집단폭행", "숨지"]
+  # 소프트 필터: 감점만 (제외하지는 않음)
+  negative_soft: ["논란", "폭로", "저격", "의혹", "루머", "불화", "이혼", "파경", "열애설", "결별", "탈세", "적발", "소송", "고소", "파업", "위반", "불법", "고발", "경고", "주의보"]
+  # 소재 묶음에서 아예 빼는 너무 일반적인 키워드 (구글 트렌드 등에 자주 뜨는 방송사/포털 이름)
+  ignore_keywords: ["kbs", "mbc", "sbs", "jtbc", "ytn", "tvn", "google", "구글", "instagram", "인스타그램", "youtube", "유튜브", "naver", "네이버", "kakao", "카카오", "facebook", "조선일보", "중앙일보", "동아일보", "한겨레", "연합뉴스", "sxmb"]
+  politics: ["대통령", "국회", "의원", "여당", "야당", "탄핵", "검찰", "특검", "정당", "총선", "대선", "국정감사", "국민의힘", "민주당", "청와대", "대통령실", "장관", "총리", "백악관", "트럼프", "중간선거", "선거", "이재명", "윤석열", "지지율", "한동훈", "국무회의"]
+
+# ---- 점수 가중치 (0~100 상한) ----
+scoring:
+  per_channel: 10           # 서로 다른 채널에서 확인될 때마다 (최대 5개 채널까지)
+  trend_1000: 25
+  trend_500: 15
+  trend_200: 8
+  trend_100: 4
+  fresh_30: 15
+  fresh_60: 12
+  fresh_180: 8
+  fresh_360: 4
+  naver_rank_top3: 15
+  naver_rank_top10: 10
+  naver_rank_other: 5
+  naver_views_50k: 8
+  naver_views_30k: 5
+  naver_home: 12
+  naver_press_5: 10         # 네이버 언론사 랭킹 5곳 이상에 같은 이슈
+  naver_press_3: 7
+  naver_press_2: 4
+  naver_headline: 4         # 네이버 섹션 헤드라인에 노출
+  nate_top5: 10
+  nate_other: 6
+  gnews_cluster_5: 5
+  gnews_cluster_3: 2
+  daum_multi_3: 6
+  off_topic_penalty: -15
+  soft_negative_penalty: -15
+
+# ---- 로컬 LLM (맥의 MLX Qwen 서버: OpenAI 호환 API) ----
+llm:
+  enabled: true
+  base_url: "http://127.0.0.1:11434/v1"   # Ollama
+  model: "gemma4:12b"       # Ollama 모델 태그 (ollama list 로 확인)
+  api: auto                 # auto: 11434 포트면 Ollama 전용 API(생각 과정 끄기 지원) / ollama / openai
+  no_think: auto            # Qwen 계열일 때만 '/no_think' 를 붙임 (auto/true/false)
+  merge_system: auto        # Gemma 계열일 때 system 지시문을 사용자 메시지에 합침 (auto/true/false)
+  api_key: ""
+  max_topics: 5             # 상위 N개 소재에만 제목/구성 제안 생성
+  timeout_sec: 240
+  max_tokens: 900
+  autostart_cmd: ""         # 서버가 꺼져 있을 때 실행할 명령 (비워두면 자동 시작 안 함)
+
+report:
+  top_n: 7
+  keep_days: 90             # 이 일수보다 오래된 원본 JSON/디버그 자료는 정리
