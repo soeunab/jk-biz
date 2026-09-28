@@ -47,3 +47,13 @@ npm run naver:check -- <계정ID>   # 네이버 에디터 선택자 점검 (글�
 2. `ga4_report` / `gsc_query by=page` / `adsense_report` 로 API 값과 DB 값을 비교 — 글 매칭이 `null` 이면 원고의 `remoteUrl` 경로와 실제 URL 이 다른 것.
 3. 필요하면 `analytics-mcp` 로 GA4 를 직접 조회해 교차 확인.
 4. 동기화 로직은 `src/lib/analytics/sync.ts`, 조회는 `src/lib/analytics/google.ts` (MCP 와 같은 코드).
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

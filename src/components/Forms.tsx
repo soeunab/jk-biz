@@ -40,6 +40,7 @@ export function useSubmit() {
 export function DiscoverForm() {
   const { busy, msg, submit } = useSubmit();
   const [seeds, setSeeds] = useState("");
+  const [domain, setDomain] = useState("");
   const [platform, setPlatform] = useState("BOTH");
   const [persona, setPersona] = useState("ANY");
   const [limit, setLimit] = useState(12);
@@ -48,12 +49,16 @@ export function DiscoverForm() {
       className="card grid gap-3 md:grid-cols-[1fr_auto_auto_auto_auto] md:items-end"
       onSubmit={(e) => {
         e.preventDefault();
-        submit("/api/topics/discover", { seeds, platform, persona, limit });
+        submit("/api/topics/discover", { seeds, domain, platform, persona, limit });
       }}
     >
       <div>
         <label className="label">시드 키워드 (쉼표 구분, 비우면 브랜드 기본 키워드)</label>
         <input className="input" value={seeds} onChange={(e) => setSeeds(e.target.value)} placeholder="예: 제미나이 사용법, 클로드 보고서, 프리랜서 AI" />
+      </div>
+      <div className="md:col-span-5">
+        <label className="label">이번 발굴의 주제 도메인 (선택 — 브랜드와 다른 콘셉트의 계정용 시드일 때만. 비우면 브랜드 미션 사용)</label>
+        <input className="input" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="예: 경제·생활 혜택 정보 (AI 도구와 무관, 정확한 사실 기반 생활 정보 블로그)" />
       </div>
       <div>
         <label className="label">플랫폼</label>

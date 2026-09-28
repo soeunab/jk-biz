@@ -16,9 +16,10 @@ export async function generateManuscript(
   if (!opts.skipResearch) {
     try {
       await opts.log?.("최신 정보 조사 중 (웹 검색)…");
-      const r = await research(
-        `"${brief.keyword}" 블로그 글을 쓰려고 합니다. ${brief.tool ?? ""}의 ${today} 기준 최신 요금제, 주요 기능, 사용 방법, 한국어 지원, 제한사항, ${PERSONAS[brief.persona].label} 활용 사례를 조사해 주세요.`,
-      );
+      const researchQuestion = brief.tool
+        ? `"${brief.keyword}" 블로그 글을 쓰려고 합니다. ${brief.tool}의 ${today} 기준 최신 요금제, 주요 기능, 사용 방법, 한국어 지원, 제한사항, ${PERSONAS[brief.persona].label} 활용 사례를 조사해 주세요.`
+        : `"${brief.keyword}" 블로그 글을 쓰려고 합니다. ${today} 기준 이 주제의 최신 사실(금액·조건·기한·절차 등 공식 정보)과 ${PERSONAS[brief.persona].label}에게 실질적으로 도움이 되는 내용을 조사해 주세요.`;
+      const r = await research(researchQuestion);
       researchNotes = r.notes;
       researchSources = r.sources;
       if (r.sources.length) await opts.log?.(`출처 ${r.sources.length}개 확보`);
@@ -32,7 +33,7 @@ export async function generateManuscript(
     name: "manuscript",
     task: "write",
     title: `원고: ${brief.title ?? brief.keyword} (${brief.platform === "NAVER" ? "네이버" : "블로거"})`,
-    system: buildSystemPrompt(brand, brief.platform),
+    system: buildSystemPrompt(brand, brief.platform, brief.accountConcept),
     prompt: buildUserPrompt({ ...brief, today, researchNotes, researchSources }),
     schema: ManuscriptSchema,
     effort: "high",

@@ -73,9 +73,13 @@ export const PLATFORM_GUIDES: Record<Platform, string> = {
 `,
 };
 
-export function buildSystemPrompt(brand: Brand, platform: Platform) {
+export function buildSystemPrompt(brand: Brand, platform: Platform, accountConcept?: string | null) {
+  const missionLine = accountConcept?.trim()
+    ? `이 계정(블로그)의 주제: ${accountConcept.trim()}
+브랜드 전체 미션(참고용 — 이 계정 주제와 다르면 이 글의 소재를 브랜드 미션에 억지로 맞추지 말고 위 계정 주제를 따르세요): ${brand.mission}`
+    : `브랜드 미션: ${brand.mission}`;
   return `당신은 "${brand.name}" 블로그의 수석 에디터입니다.
-브랜드 미션: ${brand.mission}
+${missionLine}
 저자 소개: ${brand.authorBio}
 문체: ${brand.tone}
 금지 표현: ${brand.bannedPhrases.join(", ")}
@@ -117,7 +121,7 @@ export function buildUserPrompt(b: BriefInput) {
 - 핵심 키워드: ${b.keyword}
 - 가제: ${b.title ?? "(자유)"}
 - 관점/구성: ${b.angle || "(자유)"}
-- 주요 도구: ${b.tool || "(키워드에 맞게)"}
+${b.tool ? `- 주요 도구: ${b.tool}` : ""}
 - 대상 독자: ${persona.label} — ${persona.description}
 - 독자 관심사: ${persona.needs.join(", ")}
 - 오늘 날짜: ${b.today} (시점 표기에 사용)
@@ -139,7 +143,7 @@ ${b.affiliateProducts?.length ? b.affiliateProducts.map((p) => `- id=${p.id} | $
 ${riskPromptRules(risk)}
 ${republishRules(b)}
 
-구성 필수 요소: directAnswer, tldr 3개, 섹션별 image(가능한 한), 비교가 필요하면 표, 프롬프트 예시 1개 이상(인용 형태 "> "), "[경험 추가: …]" 자리표시 1~3개, FAQ 4~6개, 결론과 CTA, reviewChecklist.`;
+구성 필수 요소: directAnswer, tldr 3개, 섹션별 image(가능한 한), 비교가 필요하면 표, ${b.tool ? `프롬프트 예시 1개 이상(인용 형태 "> "), ` : ""}"[경험 추가: …]" 자리표시 1~3개, FAQ 4~6개, 결론과 CTA, reviewChecklist.`;
 }
 
 /** 원본 링크 자리표시 — 렌더러가 원본 글 링크로 바꿉니다. */
@@ -151,7 +155,8 @@ export function conceptRules(concept?: string | null): string {
   return `- 이 블로그 계정의 콘셉트: ${concept.trim()}
   · 제목: 이 콘셉트의 독자가 검색할 표현과 상황을 담아 다른 계정 글과 구별되게
   · 관점: 이 콘셉트의 독자가 실제로 겪는 문제·목표를 중심으로 전개
-  · 예시: 모든 사례·프롬프트 예시를 이 콘셉트의 독자 상황으로 설정 (다른 독자층 예시 재사용 금지)`;
+  · 예시: 모든 사례·프롬프트 예시를 이 콘셉트의 독자 상황으로 설정 (다른 독자층 예시 재사용 금지)
+  · 위 "핵심 키워드·가제·관점/구성·주요 도구"가 이 콘셉트와 성격이 다르면(예: 콘셉트는 AI 도구와 무관한데 주요 도구가 지정된 경우), 이 콘셉트를 우선하고 소재를 이 계정 주제에 맞게 다시 해석하세요. 안 맞는 도구·소재를 억지로 끼워 넣지 마세요.`;
 }
 
 /** 크로스플랫폼 재발행 규칙 — 원본 복사 금지, 관점·구성·예시 새로 쓰기, 원본 백링크 */

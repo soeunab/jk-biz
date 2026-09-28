@@ -19,6 +19,8 @@ export type DiscoverOptions = {
   platform?: "NAVER" | "BLOGGER" | "BOTH";
   persona?: Persona | "ANY";
   limit?: number;
+  /** 이번 발굴 묶음의 주제 도메인 (예: "경제·생활 혜택 정보, AI 도구와 무관"). 비우면 브랜드 미션을 그대로 씀 — 브랜드와 다른 콘셉트의 계정을 위해 시드를 따로 줄 때 사용 */
+  domain?: string;
 };
 
 const VERIFICATION_RANK: Record<Verification, number> = { VERIFIED: 0, SUGGESTED: 1, UNVERIFIED: 2 };
@@ -33,7 +35,7 @@ export const IdeaSchema = z.object({
       title: z.string().describe("클릭을 부르는 블로그 제목 (키워드를 앞쪽에, 32자 내외)"),
       angle: z.string().describe("차별화 관점·구성 한 줄"),
       persona: z.enum(["SOLO", "FREELANCER", "OFFICE", "GENERAL"]),
-      tool: z.string().describe("주로 다루는 AI 도구 이름"),
+      tool: z.string().describe("이 글이 실제로 다루는 AI 도구 이름. 주제가 AI 도구 활용과 무관하면 빈 문자열(\"\")로 두세요 — 억지로 AI 도구를 끼워 넣지 마세요"),
       rationale: z.string().describe("선정 이유 1~2문장 — 후보 표에 주어진 지표만 근거로 인용. 표에 없는 수치·수익 예측 금지, 미확인 지표는 미확인이라고 쓸 것"),
     }),
   ),
@@ -156,11 +158,12 @@ export async function discoverTopics(opts: DiscoverOptions, ctx?: JobContext) {
     task: "light",
     title: `주제 기획 (${fresh.length}개 후보)`,
     system: `당신은 한국 블로그 수익화(애드센스·애드포스트·쇼핑커넥트) 전문 콘텐츠 기획자입니다.
-브랜드: ${brand.name} — ${brand.mission}
+이번 기획 대상 블로그의 주제: ${opts.domain?.trim() || `${brand.name} — ${brand.mission}`}
 독자 페르소나:
 ${Object.entries(PERSONAS).map(([k, p]) => `- ${k} (${p.label}): ${p.description}. 관심사: ${p.needs.join(", ")}`).join("\n")}`,
-    prompt: `아래 후보 키워드 중 브랜드 주제에 맞고 수익성이 높은 것을 골라 블로그 글 기획 ${limit}개를 만들어 주세요.
+    prompt: `아래 후보 키워드 중 위 블로그 주제에 맞고 수익성이 높은 것을 골라 블로그 글 기획 ${limit}개를 만들어 주세요.
 ${personaHint}
+- 이 블로그 주제가 AI 도구와 무관하면, 키워드를 억지로 AI 도구 활용법으로 비틀지 마세요. tool 은 빈 문자열로 두고, title·angle 도 이 블로그 주제 그대로 쓰세요.
 - keyword 는 반드시 후보 목록의 키워드를 그대로 사용하세요.
 - 같은 키워드로 기획을 두 번 만들지 마세요.
 - 제목은 검색 키워드를 앞쪽에 두고, 숫자·연도·대상 독자를 활용해 클릭을 유도하되 과장하지 마세요.
@@ -252,5 +255,5 @@ export function guessTool(keyword: string): string {
     [/캔바|canva/, "Canva AI"],
     [/노션|notion/, "Notion AI"],
   ];
-  return map.find(([re]) => re.test(k))?.[1] ?? "Gemini";
+  return map.find(([re]) => re.test(k))?.[1] ?? "";
 }
