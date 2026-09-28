@@ -130,11 +130,20 @@ describe("작업별 라우팅", () => {
   });
 
   it("자동: 아무것도 없으면 수동 (API 키가 없으면 과금 경로로 가지 않음)", async () => {
-    process.env.CLAUDE_CODE_BIN = path.join(dir, "없는-claude");
     process.env.OLLAMA_URL = "http://127.0.0.1:9";
-    const { routeFor, costLabel } = await llm();
-    for (const t of ["write", "light", "research"] as const) expect(await routeFor(t)).toBe("manual");
-    expect(costLabel("manual")).toContain("무료");
+    // claudeBin() 은 CLAUDE_CODE_BIN 이 잘못돼도 /opt/homebrew/bin/claude 등 실제 설치 경로를 폴백으로 찾으므로,
+    // "설치된 곳이 전혀 없음"은 CLAUDE_CODE_BIN 조작이 아니라 claudeBin() 자체를 목으로 대체해 시뮬레이션합니다.
+    vi.doMock("@/lib/llm/claudeCode", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/llm/claudeCode")>();
+      return { ...actual, claudeBin: () => null };
+    });
+    try {
+      const { routeFor, costLabel } = await llm();
+      for (const t of ["write", "light", "research"] as const) expect(await routeFor(t)).toBe("manual");
+      expect(costLabel("manual")).toContain("무료");
+    } finally {
+      vi.doUnmock("@/lib/llm/claudeCode");
+    }
   });
 
   it("자동: Claude Code 가 있으면 API 키가 있어도 구독이 우선", async () => {

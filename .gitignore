@@ -9,3 +9,6 @@ prisma/*.db
 prisma/*.db-journal
 storage/
 .DS_Store
+
+# 구글 클라우드 콘솔에서 받는 OAuth 클라이언트 시크릿(브라우저 다운로드가 이 폴더에 저장될 수 있음)
+client_secret_*.json
