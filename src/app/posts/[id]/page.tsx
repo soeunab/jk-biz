@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { readManuscript } from "@/lib/content/service";
+import { readManuscript, researchNotesOf } from "@/lib/content/service";
 import type { SeoReport } from "@/lib/content/seo";
 import { ActionButton } from "@/components/ActionButton";
 import { AutoRefresh } from "@/components/AutoRefresh";
@@ -42,7 +42,7 @@ export default async function PostPage({ params, searchParams }: { params: Promi
     .slice(0, 5);
   const busy = post.status === "GENERATING" || jobs.some((j) => j.status === "QUEUED" || j.status === "RUNNING");
   const stepIndex = STEPS.findIndex((s) => s.key === post.status);
-  const issues = m && ["DRAFT", "PRIVATE", "APPROVED"].includes(post.status) ? readinessIssues(m, { brand: await getBrand(), similarity: report?.similarity }) : [];
+  const issues = m && ["DRAFT", "PRIVATE", "APPROVED"].includes(post.status) ? readinessIssues(m, { brand: await getBrand(), similarity: report?.similarity, renderedHtml: post.html, researchNotes: researchNotesOf(post.research) }) : [];
   const demo = (post.account?.settings as { demo?: boolean } | null)?.demo;
 
   return (

@@ -1,6 +1,7 @@
 import { charCount } from "../util";
 import { manuscriptText } from "./render";
-import { detectRisk, manuscriptRiskText, PREDICTIVE_RE } from "./risk";
+import { detectRisk, hasInvestDisclaimer, manuscriptRiskText, PREDICTIVE_RE, tradeAdviceFaqs } from "./risk";
+import { findTenseConflicts } from "./tense";
 import { PLACEHOLDER_RE, type Manuscript, type Platform } from "./types";
 
 export type SeoGroup = "SEO" | "AEO" | "GEO" | "사실·정책" | "수익화" | "참고";
@@ -60,7 +61,16 @@ function countOccurrences(text: string, needle: string) {
 export function auditManuscript(
   m: Manuscript,
   platform: Platform,
-  opts: { imageCount: number; bannedPhrases?: string[]; disclosureText?: string } = { imageCount: 0 },
+  opts: {
+    imageCount: number;
+    bannedPhrases?: string[];
+    disclosureText?: string;
+    /** 실제 발행될 HTML — 고지 문구가 최종 결과물에 들어갔는지 확인 */
+    renderedHtml?: string;
+    /** 시제 모순 점검용: 기준일(YYYY-MM-DD)과 원고 작성 시 저장한 조사 메모 */
+    today?: string;
+    researchNotes?: string | null;
+  } = { imageCount: 0 },
 ): SeoReport {
   const ref = REFERENCE[platform];
   const text = manuscriptText(m);
@@ -79,6 +89,9 @@ export function auditManuscript(
   const placeholders = countPlaceholders(m);
   const risk = detectRisk(manuscriptRiskText(m));
   const predictive = text.match(PREDICTIVE_RE)?.[0];
+  const invest = risk?.categories.includes("INVEST") ?? false;
+  const tradeFaqs = invest ? tradeAdviceFaqs(m.faq) : [];
+  const tense = findTenseConflicts(m, { today: opts.today ?? new Date().toISOString().slice(0, 10), researchNotes: opts.researchNotes });
   // 네이버는 키워드 형태 일치를 중시 → 제목에 키워드가 그대로(띄어쓰기 포함) 있어야 함
   const titleHasKw = platform === "NAVER" ? m.title.toLowerCase().includes(kw.toLowerCase()) : countOccurrences(m.title, kw) > 0;
   const kwPos = m.title.replace(/\s/g, "").toLowerCase().indexOf(kw.replace(/\s/g, "").toLowerCase());
@@ -124,10 +137,38 @@ export function auditManuscript(
       detail: placeholders ? `남은 [경험 추가] ${placeholders}개 — AI는 경험을 지어내지 않아요` : "모두 채움",
     },
     { id: "banned", group: "사실·정책", label: "과장·금지 표현 없음", weight: 5, pass: banned.length === 0, detail: banned.join(", ") || "없음" },
+    {
+      id: "tense",
+      group: "사실·정책",
+      label: "이미 벌어진 일을 미래형으로 쓰지 않음",
+      weight: 6,
+      pass: tense.length === 0,
+      detail: tense.length ? `${tense.length}건 — ${tense[0].reason} “${tense[0].sentence.slice(0, 40)}…”` : opts.researchNotes ? "지난 날짜·조사 메모와 충돌 없음" : "지난 날짜와 충돌 없음 (조사 메모 없음)",
+    },
     ...(risk
       ? [
           { id: "risk-sources", group: "사실·정책" as const, label: `고위험 주제(${risk.labels.join("·")}) 공식 출처`, weight: 8, pass: m.sources.length >= 1, detail: `${m.sources.length}개 — 금액·요건·기한 주장마다 출처 필요` },
           { id: "risk-predictive", group: "사실·정책" as const, label: "예측·보장 표현 없음", weight: 6, pass: !predictive, detail: predictive ? `"${predictive}"` : "없음" },
+        ]
+      : []),
+    ...(invest
+      ? [
+          {
+            id: "invest-disclaimer",
+            group: "사실·정책" as const,
+            label: "투자 권유 아님·책임 고지 문구가 실제로 포함",
+            weight: 8,
+            pass: hasInvestDisclaimer(opts.renderedHtml ?? text),
+            detail: opts.renderedHtml ? "발행될 HTML 기준 확인" : "원고 본문 기준 확인",
+          },
+          {
+            id: "invest-faq",
+            group: "사실·정책" as const,
+            label: "FAQ 에서 매수·매도를 대신 판단하지 않음",
+            weight: 6,
+            pass: tradeFaqs.length === 0,
+            detail: tradeFaqs.length ? `"${tradeFaqs[0].q}" — 사실과 지켜볼 지표만 답하세요` : "없음",
+          },
         ]
       : []),
     ...(m.affiliate.length
@@ -146,6 +187,6 @@ export function auditManuscript(
   return {
     score: Math.round((got / total) * 100),
     checks,
-    stats: { chars, keywordCount: kwCount, density: Math.round(density * 1000) / 10, headings, faq: m.faq.length, images: opts.imageCount, placeholders },
+    stats: { chars, keywordCount: kwCount, density: Math.round(density * 1000) / 10, headings, faq: m.faq.length, images: opts.imageCount, placeholders, tenseConflicts: tense.length },
   };
 }

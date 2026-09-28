@@ -4,7 +4,15 @@
  * 감지되면 출처 필수·예측성 표현 금지·고지 문구 자동 삽입을 적용합니다.
  * (자동 검사는 차단을 결정하지 않고, 사람이 읽을 수 있는 사유를 만들어 검수를 돕는 역할만 합니다.)
  */
-export type RiskCategory = "TAX" | "FINANCE" | "LEGAL" | "HEALTH" | "HOUSING" | "WELFARE";
+export type RiskCategory = "TAX" | "INVEST" | "FINANCE" | "LEGAL" | "HEALTH" | "HOUSING" | "WELFARE";
+
+/** 투자 주제 필수 고지 문구 — 렌더러가 자동 삽입하고, 점검 항목이 실제로 들어갔는지 확인합니다. */
+export const INVEST_DISCLAIMER = "이 글은 정보 제공 목적이며 투자 권유가 아닙니다. 최종 판단과 책임은 본인에게 있습니다.";
+/** 고지 문구가 표현만 조금 달라도 인정: "투자 권유가 아님" + "판단·책임은 본인(투자자)" 두 요소가 모두 있어야 함 */
+export function hasInvestDisclaimer(text: string): boolean {
+  const plain = text.replace(/<[^>]+>/g, " ");
+  return /투자\s?(권유|권고)(가|를)?\s?(아닙|아니|아님|하지\s?않)/.test(plain) && /(책임|판단)[^.。]{0,20}(본인|투자자)/.test(plain);
+}
 
 const RULES: { cat: RiskCategory; label: string; re: RegExp; disclaimer: string }[] = [
   {
@@ -14,10 +22,16 @@ const RULES: { cat: RiskCategory; label: string; re: RegExp; disclaimer: string 
     disclaimer: "이 글은 일반적인 정보이며, 개인 상황에 따라 세액·신고 방법이 달라질 수 있으니 국세청(홈택스) 또는 세무 전문가에게 확인하세요.",
   },
   {
+    cat: "INVEST",
+    label: "투자·재테크",
+    re: /(주식|주가|종목|증시|코스피|코스닥|나스닥|배당|공모주|매수|매도|코인|가상자산|비트코인|펀드|etf|재테크|투자\s?(상품|방법|수익|종목|전략|포트폴리오))/i,
+    disclaimer: INVEST_DISCLAIMER,
+  },
+  {
     cat: "FINANCE",
-    label: "금융·투자",
-    re: /(주식|코인|가상자산|비트코인|펀드|etf|재테크|대출|금리|적금|예금|보험|투자\s?(상품|방법|수익|종목|전략))/i,
-    disclaimer: "이 글은 정보 제공 목적이며 투자·금융상품 권유가 아닙니다. 판단과 책임은 본인에게 있습니다.",
+    label: "금융상품",
+    re: /(대출|금리|적금|예금|보험|신용점수)/,
+    disclaimer: "이 글은 일반적인 정보이며 금융상품 가입 권유가 아닙니다. 조건은 금융사·상품마다 다르니 공식 안내를 확인하세요.",
   },
   {
     cat: "LEGAL",
@@ -45,8 +59,19 @@ const RULES: { cat: RiskCategory; label: string; re: RegExp; disclaimer: string 
   },
 ];
 
-/** 예측·보장성 표현 (고위험 주제에서 금지) */
-export const PREDICTIVE_RE = /(오를 것|오를 전망|떨어질 것|반드시 오|확실히 (벌|받|오르)|무조건 (받|벌|오르|승인)|수익 보장|100% (환급|승인|보장))/;
+/** 예측·보장·매매 추천 표현 (고위험 주제에서 금지) */
+export const PREDICTIVE_RE =
+  /(오를 것|오를 전망|오를 가능성이 높|상승할 것|급등할|떨어질 것|하락할 것|반드시 오|확실히 (벌|받|오르)|무조건 (받|벌|오르|승인)|수익 보장|100% (환급|승인|보장)|지금이 (매수|매도|살) ?(시점|타이밍|때|기회)|매수 (타이밍|적기)|사야 할 때|추천 종목|매수하세요|매도하세요)/;
+
+/** "지금 사야 하나요?" 류 매매 판단 질문 */
+export const BUY_SELL_QUESTION_RE = /(사야 ?(하나요|할까요|되나요)|살까요|사도 (될까요|되나요)|매수해도|매수할까요|팔아야|팔까요|매도해야|매도할까요|지금 들어가도|손절해야)/;
+/** 매매를 대신 판단해 주는 답변 표현 */
+export const TRADE_ADVICE_RE = /(사세요|매수하세요|매수를 추천|파세요|매도하세요|매도를 추천|지금 사는 (게|것이) (좋|낫)|지금이 기회|들어가셔도 (좋|됩)|추천합니다)/;
+
+/** FAQ 중 매매 판단 질문에 매매를 권유하는 답이 달린 항목 */
+export function tradeAdviceFaqs(faq: { q: string; a: string }[]) {
+  return faq.filter((f) => BUY_SELL_QUESTION_RE.test(f.q) && TRADE_ADVICE_RE.test(f.a));
+}
 
 export type RiskResult = { categories: RiskCategory[]; labels: string[]; disclaimers: string[] };
 
@@ -67,5 +92,12 @@ export function riskPromptRules(risk: RiskResult | null): string {
 [고위험 주제 규칙 — 감지: ${risk.labels.join(", ")}]
 - 금액·요건·기한·세율 등 핵심 주장마다 공식 출처(정부·기관·공식 문서)를 sources 에 기록하세요. 출처가 없으면 쓰지 말고 reviewChecklist 에 남기세요.
 - "오를 것이다", "무조건 받는다", "수익 보장" 같은 예측·보장 표현을 쓰지 마세요. 확인된 사실과 판단에 필요한 재료만 제공하세요.
-- 개인 상황에 따라 달라질 수 있다는 점을 본문에 밝히세요. (고지 문구는 시스템이 자동으로 붙입니다)`;
+- 개인 상황에 따라 달라질 수 있다는 점을 본문에 밝히세요. (고지 문구는 시스템이 자동으로 붙입니다)${
+    risk.categories.includes("INVEST")
+      ? `
+- [투자·재테크] 본문 결론부에 "${INVEST_DISCLAIMER}" 문장을 그대로 넣으세요.
+- [투자·재테크] "오를 것이다", "지금이 매수 시점이다", "추천 종목" 같은 예측·추천을 쓰지 말고, 실적·공시·공식 발표 등 확인된 사실만 전달하세요.
+- [투자·재테크] "지금 사야 하나요?" 같은 FAQ 에는 매수·매도를 대신 판단하지 말고 "확인된 사실 + 앞으로 지켜볼 지표(실적 발표일, 공시, 금리 등)"만 답하세요.`
+      : ""
+  }`;
 }

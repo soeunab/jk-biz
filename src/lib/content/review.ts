@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { generateJson, research } from "../llm";
 import type { JobContext } from "../jobs/queue";
-import { readManuscript, rerenderPost } from "./service";
+import { readManuscript, rerenderPost, researchNotesOf } from "./service";
 import { ManuscriptSchema, type Manuscript } from "./types";
 
 /**
@@ -47,8 +47,9 @@ export async function runAiReview(postId: string, ctx?: JobContext) {
 [바꾸면 안 되는 것] 제목, 소제목, 섹션 구조, 핵심 키워드, 문체, 분량. 이 요소들은 검색 데이터를 근거로 만든 것이므로
 "더 자연스럽게" 같은 이유로 고치지 마세요. 사실 오류나 오탈자 때문에 예외로 고쳤다면 summary 에 반드시 밝히세요.
 [경험 자리표시] "[경험 추가: …]" 는 사람이 채울 자리이므로 건드리지 마세요.
+[시제] 이미 출시·시행·발표된 것을 "예정입니다/출시 전" 같은 미래형으로 쓴 문장은 사실오류로 고치세요.
 확인할 수 없는 내용은 고치지 말고 concerns 에 적으세요. before 는 원문 글자 그대로여야 합니다.`,
-    prompt: `[조사 메모]\n${facts.notes || "(조사 불가)"}\n[출처]\n${facts.sources.map((s) => `- ${s.title}: ${s.url}`).join("\n") || "(없음)"}\n\n[원고 JSON]\n${JSON.stringify(m)}`,
+    prompt: `[원고 작성 당시 조사 메모]\n${researchNotesOf(post.research) ?? "(없음)"}\n\n[지금 다시 조사한 메모]\n${facts.notes || "(조사 불가)"}\n[출처]\n${facts.sources.map((s) => `- ${s.title}: ${s.url}`).join("\n") || "(없음)"}\n\n[원고 JSON]\n${JSON.stringify(m)}`,
     schema: ReviewSchema,
     effort: "high",
     maxTokens: 16000,

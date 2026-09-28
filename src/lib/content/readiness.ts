@@ -1,5 +1,6 @@
 import type { Brand } from "../brand";
-import { detectRisk, manuscriptRiskText, PREDICTIVE_RE } from "./risk";
+import { detectRisk, hasInvestDisclaimer, manuscriptRiskText, PREDICTIVE_RE, tradeAdviceFaqs } from "./risk";
+import { findTenseConflicts } from "./tense";
 import { countPlaceholders } from "./seo";
 import { manuscriptText } from "./render";
 import type { Manuscript } from "./types";
@@ -12,7 +13,14 @@ export type ReadinessIssue = { id: string; message: string };
  */
 export function readinessIssues(
   m: Manuscript,
-  ctx: { brand: Pick<Brand, "disclosure">; similarity?: { warn: boolean; max: number; with: { title: string } | null } | null },
+  ctx: {
+    brand: Pick<Brand, "disclosure">;
+    similarity?: { warn: boolean; max: number; with: { title: string } | null } | null;
+    /** 발행될 HTML (고지 문구 실제 포함 여부 확인) */
+    renderedHtml?: string;
+    researchNotes?: string | null;
+    today?: string;
+  },
 ): ReadinessIssue[] {
   const issues: ReadinessIssue[] = [];
   const ph = countPlaceholders(m);
@@ -24,6 +32,24 @@ export function readinessIssues(
   }
   const predictive = manuscriptText(m).match(PREDICTIVE_RE)?.[0];
   if (risk && predictive) issues.push({ id: "risk-predictive", message: `예측·보장 표현 "${predictive}"이(가) 있어요.` });
+
+  if (risk?.categories.includes("INVEST")) {
+    if (!hasInvestDisclaimer(ctx.renderedHtml ?? manuscriptText(m))) {
+      issues.push({ id: "invest-disclaimer", message: "투자·재테크 주제인데 \"투자 권유가 아니며 최종 판단과 책임은 본인에게 있다\"는 고지 문구가 발행될 글에 없어요." });
+    }
+    const trade = tradeAdviceFaqs(m.faq);
+    if (trade.length) {
+      issues.push({ id: "invest-faq", message: `FAQ "${trade[0].q}"에서 매수·매도를 대신 판단하고 있어요. 확인된 사실과 지켜볼 지표만 답하도록 고쳐 주세요.` });
+    }
+  }
+
+  const tense = findTenseConflicts(m, { today: ctx.today ?? new Date().toISOString().slice(0, 10), researchNotes: ctx.researchNotes });
+  if (tense.length) {
+    issues.push({
+      id: "tense",
+      message: `이미 벌어진 일을 미래형으로 쓴 것 같은 문장 ${tense.length}개: “${tense[0].sentence.slice(0, 50)}…” — ${tense[0].reason}`,
+    });
+  }
 
   if (m.affiliate.length && !ctx.brand.disclosure.affiliate.trim()) {
     issues.push({ id: "disclosure", message: "제휴 링크가 있는데 대가성 문구가 비어 있어요. [설정 → 브랜드]에서 입력해 주세요." });

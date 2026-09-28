@@ -3,7 +3,7 @@ import { db } from "../db";
 import { getBrand, type Persona } from "../brand";
 import { enqueue, type JobContext } from "../jobs/queue";
 import { buildPostImages } from "../images/pipeline";
-import { asObject } from "../util";
+import { asObject, ymd } from "../util";
 import { generateManuscript } from "./generate";
 import { manuscriptText, renderBlogger, renderNaverPreview, renderNaverSegments, type RenderImage, type RenderOptions } from "./render";
 import { auditManuscript } from "./seo";
@@ -24,6 +24,12 @@ export type AccountSettings = {
 
 export function accountSettings(v: unknown): AccountSettings {
   return asObject<AccountSettings>(v, {});
+}
+
+/** 저장된 조사 메모 텍스트 (없으면 null) */
+export function researchNotesOf(v: unknown): string | null {
+  const notes = (v as { notes?: unknown } | null)?.notes;
+  return typeof notes === "string" && notes.trim() ? notes : null;
 }
 
 export function readManuscript(v: unknown): Manuscript | null {
@@ -86,7 +92,7 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
       select: { title: true },
     });
 
-    const manuscript = await generateManuscript(
+    const { manuscript, research } = await generateManuscript(
       {
         platform,
         keyword: post.topic?.keyword ?? post.focusKeyword,
@@ -108,6 +114,7 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
       where: { id: postId },
       data: {
         content: manuscript as unknown as Prisma.InputJsonValue,
+        research: research as unknown as Prisma.InputJsonValue,
         title: manuscript.title,
         slug: manuscript.slug,
         focusKeyword: manuscript.focusKeyword,
@@ -162,7 +169,14 @@ export async function rerenderPost(postId: string, opts: { forPublish?: boolean;
 
   const platform = post.platform as Platform;
   const html = platform === "BLOGGER" ? renderBlogger(m, ro) : renderNaverPreview(renderNaverSegments(m, ro));
-  const report = auditManuscript(m, platform, { imageCount: images.length, bannedPhrases: brand.bannedPhrases, disclosureText: brand.disclosure.affiliate });
+  const report = auditManuscript(m, platform, {
+    imageCount: images.length,
+    bannedPhrases: brand.bannedPhrases,
+    disclosureText: brand.disclosure.affiliate,
+    renderedHtml: html,
+    today: ymd(new Date()),
+    researchNotes: researchNotesOf(post.research),
+  });
 
   // 유사문서 검사 — 같은 플랫폼 안에서만 비교합니다.
   // (같은 주제를 블로거·네이버용으로 각각 다시 쓴 것은 의도된 정상 동작이라 플랫폼 간 비교는 오탐이 됩니다)

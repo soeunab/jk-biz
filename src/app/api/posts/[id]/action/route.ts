@@ -3,7 +3,7 @@ import { fail, handle, ok } from "@/lib/api";
 import { enqueue } from "@/lib/jobs/queue";
 import { createCardNews } from "@/lib/cardnews";
 import { getBrand } from "@/lib/brand";
-import { readManuscript } from "@/lib/content/service";
+import { readManuscript, researchNotesOf } from "@/lib/content/service";
 import { readinessIssues } from "@/lib/content/readiness";
 
 type Action = "regenerate" | "images" | "publishPrivate" | "approve" | "publishPublic" | "markPublished" | "cardnews" | "unapprove" | "reject" | "reopen";
@@ -34,7 +34,7 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
       if (post.status !== "PRIVATE") return fail("비공개 발행(검수 대기) 상태에서만 승인할 수 있어요.");
       const m = readManuscript(post.content);
       const sim = (post.seoReport as { similarity?: { warn: boolean; max: number; with: { title: string } | null } } | null)?.similarity;
-      const issues = m ? readinessIssues(m, { brand: await getBrand(), similarity: sim }) : [];
+      const issues = m ? readinessIssues(m, { brand: await getBrand(), similarity: sim, renderedHtml: post.html, researchNotes: researchNotesOf(post.research) }) : [];
       // 확인 사유가 있으면 한 번 알려 주고, 검수자가 확인한 뒤(force) 승인
       if (issues.length && !force) return ok({ needsConfirm: true, issues: issues.map((i) => i.message) });
       await db.post.update({ where: { id }, data: { status: "APPROVED", reviewerNote: issues.length ? `${post.reviewerNote}\n[승인 시 확인한 사유] ${issues.map((i) => i.message).join(" / ")}`.trim() : post.reviewerNote } });

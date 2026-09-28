@@ -101,7 +101,9 @@ model Post {
   seoScore        Int       @default(0)
   seoReport       Json?
   /// AI 사실 검수 결과 (변경 제안·확인 필요 사항) — 사람이 선택해서 적용
-  aiReview        Json?      
+  aiReview        Json?
+  /// 원고 작성 시 웹 조사 메모 { notes, sources, at } — 시제 모순 점검·사실 검수의 근거
+  research        Json?      
   remoteId        String?
   remoteUrl       String?
   reviewerNote    String    @default("")

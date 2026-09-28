@@ -7,7 +7,7 @@ import { ManuscriptSchema, type Manuscript, type Platform } from "./types";
 export async function generateManuscript(
   brief: Omit<BriefInput, "today" | "researchNotes" | "researchSources">,
   opts: { log?: (m: string) => Promise<unknown> | void; skipResearch?: boolean } = {},
-): Promise<Manuscript> {
+): Promise<{ manuscript: Manuscript; research: { notes: string; sources: { title: string; url: string }[]; at: string } }> {
   const brand = await getBrand();
   const today = ymd(new Date());
 
@@ -43,7 +43,7 @@ export async function generateManuscript(
   const allowed = new Set((brief.affiliateProducts ?? []).map((p) => p.id));
   manuscript.affiliate = manuscript.affiliate.filter((a) => allowed.has(a.productId)).slice(0, 2);
   if (brief.platform === "NAVER") manuscript.tags = manuscript.tags.map((t) => t.replace(/[#\s]/g, "")).slice(0, 10);
-  return manuscript;
+  return { manuscript, research: { notes: researchNotes, sources: researchSources, at: today } };
 }
 
 /** API 키 없이도 전체 흐름을 확인할 수 있도록 만든 데모 원고 */
