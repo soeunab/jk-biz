@@ -1,0 +1,277 @@
+// 지원포유 콘텐츠 스튜디오 데이터 모델
+// 개발: SQLite / 운영: DATABASE_URL 을 PostgreSQL 로 바꾸고 provider 만 "postgresql" 로 변경하면 됩니다.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// 운영 채널 계정 (구글 블로거 N개, 네이버 블로그 N개, SNS 계정)
+model Account {
+  id          String   @id @default(cuid())
+  /// BLOGGER | NAVER | INSTAGRAM | THREADS | FACEBOOK | EXPORT
+  platform    String
+  name        String
+  /// 블로거 blogId / 네이버 blogId(아이디) / 인스타 IG user id 등
+  externalId  String?
+  url         String?
+  /// 계정별 콘셉트 — 같은 주제라도 계정마다 다른 관점으로 써서 유사문서를 피합니다.
+  concept     String   @default("")
+  /// 광고/분석 설정: adsenseClientId, adsenseSlotId, ga4PropertyId, gscSiteUrl, publishMode 등
+  settings    Json?     
+  /// AES-256-GCM 으로 암호화된 인증정보(JSON) — OAuth refresh token, access token 등
+  credentials String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  posts         Post[]
+  socialPosts   SocialPost[]
+  revenues      Revenue[]
+  accountMetric AccountMetric[]
+}
+
+/// 발굴된 주제(키워드) 후보
+model Topic {
+  id                String   @id @default(cuid())
+  keyword           String
+  title             String
+  angle             String   @default("")
+  /// SOLO(1인가구) | FREELANCER | OFFICE(직장인) | GENERAL
+  persona           String   @default("GENERAL")
+  /// 도구 이름: Gemini, Claude, ChatGPT ...
+  tool              String   @default("")
+  /// BLOGGER | NAVER | BOTH
+  targetPlatform    String   @default("BOTH")
+  /// informational | commercial | transactional | navigational
+  intent            String   @default("informational")
+  searchVolume      Int      @default(0)
+  documentCount     Int      @default(0)
+  trendScore        Float    @default(0)
+  competitionScore  Float    @default(0)
+  monetizationScore Float    @default(0)
+  totalScore        Float    @default(0)
+  rationale         String   @default("")
+  signals           Json?     
+  /// NEW | SELECTED | USED | DISMISSED
+  status            String   @default("NEW")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  posts Post[]
+
+  @@index([status, totalScore])
+}
+
+/// 블로그 원고 (플랫폼·계정별로 1개)
+model Post {
+  id              String    @id @default(cuid())
+  topicId         String?
+  topic           Topic?    @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  accountId       String?
+  account         Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  /// BLOGGER | NAVER
+  platform        String
+  /// GENERATING | DRAFT | PRIVATE(비공개 발행/임시저장 완료, 검수 대기) | APPROVED | PUBLISHED | FAILED
+  status          String    @default("GENERATING")
+  title           String    @default("")
+  slug            String    @default("")
+  focusKeyword    String    @default("")
+  metaDescription String    @default("")
+  /// 구조화된 원고(JSON) — src/lib/content/types.ts 의 Manuscript
+  content         Json?      
+  /// 플랫폼에 맞게 렌더링된 HTML
+  html            String    @default("")
+  tags            Json?      
+  seoScore        Int       @default(0)
+  seoReport       Json?      
+  remoteId        String?
+  remoteUrl       String?
+  reviewerNote    String    @default("")
+  error           String?
+  privateAt       DateTime?
+  publishedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  assets   Asset[]
+  cardNews CardNews[]
+  metrics  PostMetric[]
+  revenues Revenue[]
+
+  @@index([status])
+  @@index([platform, accountId])
+}
+
+/// 이미지 자산 (본문 이미지, 썸네일, 카드뉴스 슬라이드)
+model Asset {
+  id         String    @id @default(cuid())
+  postId     String?
+  post       Post?     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  cardNewsId String?
+  cardNews   CardNews? @relation(fields: [cardNewsId], references: [id], onDelete: Cascade)
+  /// THUMBNAIL | INLINE | CARD_SLIDE
+  kind       String
+  /// GEMINI | UNSPLASH | PEXELS | SCREENSHOT | TEMPLATE | UPLOAD
+  source     String
+  slot       String    @default("")
+  localPath  String
+  publicUrl  String?
+  alt        String    @default("")
+  prompt     String    @default("")
+  credit     String    @default("")
+  order      Int       @default(0)
+  width      Int?
+  height     Int?
+  createdAt  DateTime  @default(now())
+}
+
+/// 카드뉴스 (SNS 용)
+model CardNews {
+  id        String   @id @default(cuid())
+  postId    String?
+  post      Post?    @relation(fields: [postId], references: [id], onDelete: SetNull)
+  title     String
+  /// Slide[] (src/lib/cardnews/types.ts)
+  slides    Json?     
+  /// 플랫폼별 캡션 { instagram, threads, x, facebook, naverBand ... }
+  captions  Json?     
+  theme     String   @default("brand")
+  /// GENERATING | READY | FAILED
+  status    String   @default("GENERATING")
+  error     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assets      Asset[]
+  socialPosts SocialPost[]
+}
+
+/// SNS 발행 기록
+model SocialPost {
+  id          String    @id @default(cuid())
+  cardNewsId  String
+  cardNews    CardNews  @relation(fields: [cardNewsId], references: [id], onDelete: Cascade)
+  accountId   String?
+  account     Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  platform    String
+  /// QUEUED | PUBLISHED | FAILED | EXPORTED
+  status      String    @default("QUEUED")
+  remoteId    String?
+  remoteUrl   String?
+  error       String?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+/// 수익화용 제휴 상품 라이브러리 (네이버 쇼핑커넥트, 쿠팡파트너스 등)
+model AffiliateProduct {
+  id        String   @id @default(cuid())
+  /// SHOPPING_CONNECT | COUPANG | OTHER
+  program   String
+  name      String
+  url       String
+  /// 쉼표 구분 태그: "노트북,재택근무,프리랜서"
+  tags      String   @default("")
+  price     Int?
+  note      String   @default("")
+  /// NAVER | BLOGGER | BOTH
+  platform  String   @default("BOTH")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+/// 글 단위 일별 유입 지표
+model PostMetric {
+  id          String   @id @default(cuid())
+  postId      String
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  date        DateTime
+  /// GA4 | GSC | NAVER | MANUAL
+  source      String
+  pageviews   Int      @default(0)
+  clicks      Int      @default(0)
+  impressions Int      @default(0)
+  position    Float?
+  /// 상위 유입 검색어 [{query, clicks, impressions}]
+  queries     Json?     
+
+  @@unique([postId, date, source])
+}
+
+/// 계정 단위 일별 방문 지표
+model AccountMetric {
+  id        String   @id @default(cuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  date      DateTime
+  source    String
+  pageviews Int      @default(0)
+  visitors  Int      @default(0)
+
+  @@unique([accountId, date, source])
+}
+
+/// 수익 (애드센스/애드포스트/쇼핑커넥트/쿠팡 등)
+model Revenue {
+  id        String   @id @default(cuid())
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  postId    String?
+  post      Post?    @relation(fields: [postId], references: [id], onDelete: SetNull)
+  date      DateTime
+  /// ADSENSE | ADPOST | SHOPPING_CONNECT | COUPANG | OTHER
+  source    String
+  amount    Float
+  currency  String   @default("KRW")
+  note      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([date, source])
+}
+
+/// 분석 기반 개선·발전 제안
+model Insight {
+  id        String   @id @default(cuid())
+  /// REFRESH | RETITLE | MONETIZE | NEXT_TOPIC | CADENCE | CARDNEWS | GENERAL
+  type      String
+  priority  Int      @default(2)
+  title     String
+  body      String
+  postId    String?
+  data      Json?     
+  /// OPEN | DONE | DISMISSED
+  status    String   @default("OPEN")
+  createdAt DateTime @default(now())
+}
+
+/// 백그라운드 작업 큐 (워커 프로세스가 처리)
+model Job {
+  id         String    @id @default(cuid())
+  type       String
+  payload    Json?      
+  /// QUEUED | RUNNING | DONE | FAILED
+  status     String    @default("QUEUED")
+  progress   Int       @default(0)
+  log        String    @default("")
+  result     Json?
+  error      String?
+  attempts   Int       @default(0)
+  runAt      DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([status, runAt])
+}
+
+/// 키-값 설정 (브랜드 정보 등 대시보드에서 수정)
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}

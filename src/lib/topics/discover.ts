@@ -1,0 +1,228 @@
+import { z } from "zod";
+import { db } from "../db";
+import { getBrand, PERSONAS, type Persona } from "../brand";
+import { generateJson } from "../llm";
+import type { JobContext } from "../jobs/queue";
+import {
+  googleAutocomplete,
+  googleTrendingKR,
+  naverAutocomplete,
+  naverBlogDocCount,
+  naverSearchAdKeywords,
+  naverTrendMomentum,
+} from "./sources";
+import { relevance, scoreKeyword, type KeywordMetrics } from "./scoring";
+import { josa } from "../util";
+
+export type DiscoverOptions = {
+  seeds?: string[];
+  platform?: "NAVER" | "BLOGGER" | "BOTH";
+  persona?: Persona | "ANY";
+  limit?: number;
+};
+
+const INTENT_KO = { informational: "정보형", commercial: "비교·구매 고려형", transactional: "구매형", navigational: "탐색형" } as const;
+
+const PERSONA_MODIFIERS = ["사용법", "무료", "활용법", "프롬프트", "업무", "보고서", "직장인", "프리랜서", "1인 가구", "비교"];
+
+const IdeaSchema = z.object({
+  ideas: z.array(
+    z.object({
+      keyword: z.string().describe("대표 검색 키워드 (후보 목록에서 선택)"),
+      title: z.string().describe("클릭을 부르는 블로그 제목 (키워드를 앞쪽에, 32자 내외)"),
+      angle: z.string().describe("차별화 관점·구성 한 줄"),
+      persona: z.enum(["SOLO", "FREELANCER", "OFFICE", "GENERAL"]),
+      tool: z.string().describe("주로 다루는 AI 도구 이름"),
+      rationale: z.string().describe("이 주제가 돈이 되는 이유 (검색량·경쟁·수익화 관점) 1~2문장"),
+    }),
+  ),
+});
+
+/** 1) 키워드 확장 → 2) 지표 수집 → 3) 점수화 → 4) AI 로 주제·제목 기획 → 5) DB 저장 */
+export async function discoverTopics(opts: DiscoverOptions, ctx?: JobContext) {
+  const brand = await getBrand();
+  const seeds = (opts.seeds?.length ? opts.seeds : brand.seedKeywords).slice(0, 12);
+  const limit = opts.limit ?? 15;
+  const log = (m: string) => ctx?.log(m);
+
+  // 1) 자동완성으로 롱테일 키워드 확장
+  const sourcesByKeyword = new Map<string, Set<string>>();
+  const add = (k: string, src: string) => {
+    const key = k.trim().replace(/\s+/g, " ");
+    if (key.length < 2 || key.length > 40) return;
+    if (!sourcesByKeyword.has(key)) sourcesByKeyword.set(key, new Set());
+    sourcesByKeyword.get(key)!.add(src);
+  };
+  seeds.forEach((s) => add(s, "seed"));
+
+  let networkOk = true;
+  for (const seed of seeds) {
+    const [nav, goo] = await Promise.allSettled([naverAutocomplete(seed), googleAutocomplete(seed)]);
+    if (nav.status === "fulfilled") nav.value.forEach((k) => add(k, "naver-ac"));
+    if (goo.status === "fulfilled") goo.value.forEach((k) => add(k, "google-ac"));
+    if (nav.status === "rejected" && goo.status === "rejected") networkOk = false;
+  }
+  if (!networkOk) {
+    await log("자동완성 API 접속 실패 — 시드 키워드 조합으로 대체합니다.");
+    for (const seed of seeds) for (const m of PERSONA_MODIFIERS) if (!seed.includes(m)) add(`${seed.split(" ")[0]} ${m}`, "template");
+  }
+  const trending = await googleTrendingKR().catch(() => []);
+  trending.filter((t) => relevance(t) >= 60).forEach((t) => add(t, "google-trends"));
+  await log(`후보 키워드 ${sourcesByKeyword.size}개 수집`);
+  await ctx?.progress(25);
+
+  // 관련성 낮은 키워드 제거 후 상위 후보만 지표 조회 (API 호출량 절약)
+  let candidates = [...sourcesByKeyword.keys()].filter((k) => relevance(k) >= 40).slice(0, 60);
+
+  // 2) 네이버 검색광고 — 월간 검색량/경쟁도 (연관 키워드도 후보로 편입)
+  const adMap = new Map<string, Awaited<ReturnType<typeof naverSearchAdKeywords>>[number]>();
+  try {
+    const ad = await naverSearchAdKeywords(seeds);
+    for (const a of ad) {
+      adMap.set(a.keyword.replace(/\s/g, ""), a);
+      if (relevance(a.keyword) >= 60 && !sourcesByKeyword.has(a.keyword)) {
+        add(a.keyword, "naver-searchad");
+        candidates.push(a.keyword);
+      }
+    }
+    if (ad.length) await log(`네이버 검색광고 연관 키워드 ${ad.length}개 조회`);
+  } catch (e) {
+    await log(`검색광고 API 오류: ${(e as Error).message}`);
+  }
+  candidates = [...new Set(candidates)].slice(0, 60);
+
+  // 3) 문서 수·트렌드
+  const docCounts = new Map<string, number | null>();
+  for (const k of candidates.slice(0, 40)) {
+    docCounts.set(k, await naverBlogDocCount(k).catch(() => null));
+  }
+  const momentum = await naverTrendMomentum(candidates.slice(0, 20)).catch(() => ({}) as Record<string, number>);
+  await ctx?.progress(50, "검색량·문서수·트렌드 지표 수집 완료");
+
+  const affiliateTags = (await db.affiliateProduct.findMany({ where: { active: true }, select: { tags: true } }))
+    .flatMap((p) => p.tags.split(","))
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const scored = candidates
+    .map((keyword) => {
+      const ad = adMap.get(keyword.replace(/\s/g, ""));
+      const metrics: KeywordMetrics = {
+        keyword,
+        monthlySearch: ad ? ad.monthlyPc + ad.monthlyMobile : null,
+        documentCount: docCounts.get(keyword) ?? null,
+        compIdx: ad?.compIdx ?? null,
+        adDepth: ad?.adDepth ?? null,
+        momentum: (momentum as Record<string, number>)[keyword] ?? null,
+        sources: [...(sourcesByKeyword.get(keyword) ?? [])],
+      };
+      return { metrics, scores: scoreKeyword(metrics, affiliateTags) };
+    })
+    .filter((s) => opts.platform === undefined || opts.platform === "BOTH" || s.scores.targetPlatform !== (opts.platform === "NAVER" ? "BLOGGER" : "NAVER"))
+    .sort((a, b) => b.scores.total - a.scores.total)
+    .slice(0, Math.max(limit * 2, 20));
+
+  // 이미 다룬 키워드는 제외하고, 한 도구에 쏠리지 않도록 도구별 상한을 둡니다.
+  const existing = new Set((await db.topic.findMany({ select: { keyword: true } })).map((t) => t.keyword));
+  const perTool = new Map<string, number>();
+  const cap = Math.max(2, Math.ceil(limit / 3));
+  const fresh = scored.filter((s) => {
+    if (existing.has(s.metrics.keyword)) return false;
+    const tool = guessTool(s.metrics.keyword);
+    perTool.set(tool, (perTool.get(tool) ?? 0) + 1);
+    return perTool.get(tool)! <= cap;
+  });
+  await ctx?.progress(60, `점수화 완료 — 신규 후보 ${fresh.length}개`);
+
+  // 4) AI 기획: 후보 키워드를 브랜드 주제에 맞는 글 기획으로 변환
+  const personaHint =
+    opts.persona && opts.persona !== "ANY" ? `이번에는 "${PERSONAS[opts.persona].label}" 독자를 우선하세요.` : "1인 가구·프리랜서·직장인을 고르게 섞으세요.";
+  const table = fresh
+    .map(
+      (s) =>
+        `- ${s.metrics.keyword} | 월검색 ${s.metrics.monthlySearch ?? "?"} | 문서수 ${s.metrics.documentCount ?? "?"} | 광고경쟁 ${s.metrics.compIdx ?? "?"} | 점수 ${s.scores.total} | 의도 ${s.scores.intent}`,
+    )
+    .join("\n");
+
+  const { ideas } = await generateJson({
+    system: `당신은 한국 블로그 수익화(애드센스·애드포스트·쇼핑커넥트) 전문 콘텐츠 기획자입니다.
+브랜드: ${brand.name} — ${brand.mission}
+독자 페르소나:
+${Object.entries(PERSONAS).map(([k, p]) => `- ${k} (${p.label}): ${p.description}. 관심사: ${p.needs.join(", ")}`).join("\n")}`,
+    prompt: `아래 후보 키워드 중 브랜드 주제에 맞고 수익성이 높은 것을 골라 블로그 글 기획 ${limit}개를 만들어 주세요.
+${personaHint}
+- keyword 는 반드시 후보 목록의 키워드를 그대로 사용하세요.
+- 같은 키워드로 기획을 두 번 만들지 마세요.
+- 제목은 검색 키워드를 앞쪽에 두고, 숫자·연도·대상 독자를 활용해 클릭을 유도하되 과장하지 마세요.
+
+후보 키워드:
+${table}`,
+    schema: IdeaSchema,
+    effort: "medium",
+    maxTokens: 8000,
+    mock: () => ({
+      ideas: fresh.slice(0, limit).map((s, i) => {
+        const personas = ["OFFICE", "FREELANCER", "SOLO", "GENERAL"] as const;
+        const persona = opts.persona && opts.persona !== "ANY" ? opts.persona : personas[i % 4];
+        const tool = guessTool(s.metrics.keyword);
+        return {
+          keyword: s.metrics.keyword,
+          title: `${s.metrics.keyword} 완벽 정리 — ${josa(PERSONAS[persona].label, "을/를")} 위한 ${new Date().getFullYear()} 실전 가이드`,
+          angle: `${PERSONAS[persona].label}의 ${PERSONAS[persona].needs[i % PERSONAS[persona].needs.length]} 상황에 ${josa(tool, "을/를")} 적용하는 단계별 가이드`,
+          persona,
+          tool,
+          rationale: `검색 의도가 ${INTENT_KO[s.scores.intent]}이고 종합 점수 ${s.scores.total}점으로 상위 노출과 수익화 가능성이 높습니다.`,
+        };
+      }),
+    }),
+  });
+
+  // 5) 저장
+  const byKeyword = new Map(fresh.map((s) => [s.metrics.keyword, s]));
+  const created = [];
+  const seen = new Set<string>();
+  for (const idea of ideas) {
+    const s = byKeyword.get(idea.keyword) ?? fresh.find((f) => idea.keyword.includes(f.metrics.keyword));
+    if (!s || seen.has(s.metrics.keyword)) continue;
+    seen.add(s.metrics.keyword);
+    created.push(
+      await db.topic.create({
+        data: {
+          keyword: s.metrics.keyword,
+          title: idea.title,
+          angle: idea.angle,
+          persona: idea.persona,
+          tool: idea.tool,
+          targetPlatform: s.scores.targetPlatform,
+          intent: s.scores.intent,
+          searchVolume: s.metrics.monthlySearch ?? 0,
+          documentCount: s.metrics.documentCount ?? 0,
+          trendScore: s.scores.trendScore,
+          competitionScore: s.scores.competitionScore,
+          monetizationScore: s.scores.monetizationScore,
+          totalScore: s.scores.total,
+          rationale: idea.rationale,
+          signals: { ...s.scores, sources: s.metrics.sources, compIdx: s.metrics.compIdx, momentum: s.metrics.momentum },
+        },
+      }),
+    );
+  }
+  await ctx?.progress(100, `주제 ${created.length}개 저장`);
+  return { created: created.length };
+}
+
+export function guessTool(keyword: string): string {
+  const k = keyword.toLowerCase();
+  const map: [RegExp, string][] = [
+    [/제미나이|gemini/, "Gemini"],
+    [/클로드|claude/, "Claude"],
+    [/챗gpt|chatgpt|gpt/, "ChatGPT"],
+    [/퍼플렉시티|perplexity/, "Perplexity"],
+    [/노트북\s?lm|notebooklm/, "NotebookLM"],
+    [/코파일럿|copilot/, "Copilot"],
+    [/감마|gamma/, "Gamma"],
+    [/캔바|canva/, "Canva AI"],
+    [/노션|notion/, "Notion AI"],
+  ];
+  return map.find(([re]) => re.test(k))?.[1] ?? "Gemini";
+}
