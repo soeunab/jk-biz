@@ -8,6 +8,7 @@ import { db } from "../db";
 export type JobType =
   | "topic.discover"
   | "topic.channels"
+  | "topic.cleanup"
   | "post.generate"
   | "post.images"
   | "post.aiReview"

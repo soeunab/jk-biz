@@ -1,5 +1,5 @@
 /**
- * 실시간 채널 발굴 — 데이터 모양 (원본: reference/contents-finder/finder/models.py)
+ * 실시간 트렌드 발굴 — 데이터 모양 (원본: reference/contents-finder/finder/models.py)
  */
 export type ChannelId = "naver_home" | "naver_ranking" | "nate" | "google_trends" | "daum" | "google_news";
 

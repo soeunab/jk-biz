@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "../db";
-import { getBrand } from "../brand";
+import { getBrand, accountBrand } from "../brand";
 import { generateJson } from "../llm";
 import type { JobContext } from "../jobs/queue";
 import { buildSystemPrompt } from "./prompts";
@@ -12,10 +12,10 @@ import { SectionSchema, type Platform } from "./types";
  * 검수자가 지정한 섹션만 같은 규칙으로 다시 씁니다. 소제목(검색 데이터 기반)은 유지합니다.
  */
 export async function rewriteSection(postId: string, index: number, instruction: string, ctx?: JobContext) {
-  const post = await db.post.findUniqueOrThrow({ where: { id: postId } });
+  const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { account: true } });
   const m = readManuscript(post.content);
   if (!m || !m.sections[index]) throw new Error("섹션을 찾을 수 없습니다.");
-  const brand = await getBrand();
+  const brand = accountBrand(await getBrand(), post.account);
   const target = m.sections[index];
   const outline = m.sections.map((s, i) => `${i === index ? "▶ " : ""}${i + 1}. ${s.heading}`).join("\n");
 
@@ -23,7 +23,7 @@ export async function rewriteSection(postId: string, index: number, instruction:
     name: "section",
     task: "write",
     title: `섹션 다시 쓰기: ${m.title} — ${index + 1}번 "${target.heading}"`,
-    system: buildSystemPrompt(brand, post.platform as Platform),
+    system: buildSystemPrompt(brand, post.platform as Platform, post.account?.concept),
     prompt: `아래 원고의 ${index + 1}번 섹션만 다시 써 주세요.
 - 소제목(heading)은 그대로 유지하세요: "${target.heading}"
 - 앞뒤 섹션과 내용이 겹치지 않게, 이 섹션의 역할에 집중하세요.

@@ -43,7 +43,7 @@ export default function GuidePage() {
       <Section title="2. 주제 발굴 점수 읽는 법">
         <p><b>우선순위 점수는 &quot;무엇부터 쓸지&quot; 정하는 내부 정렬 지표</b>이며 수익·방문자 예측이 아닙니다.</p>
         <ul className="list-disc space-y-1 pl-5">
-          <li><span className="badge bg-emerald-50 text-emerald-700">공식데이터 확인</span> 네이버 검색광고·데이터랩으로 실제 검색 수요를 확인한 키워드</li>
+          <li><span className="badge bg-emerald-50 text-emerald-700">네이버 공식데이터 확인</span> 네이버 검색광고·데이터랩으로 실제 검색 수요를 확인한 키워드 — 블로거(구글) 대상으로 분류된 주제도 이 네이버 데이터를 기준으로 검증한 것입니다(구글 자체 검색량 데이터는 없음)</li>
           <li><span className="badge bg-sky-50 text-sky-700">자동완성 확인</span> 자동완성에 실제로 뜨는 키워드 (검색량은 모름)</li>
           <li><span className="badge bg-gray-100 text-gray-500">미검증</span> 실제로 검색되는지 확인하지 못한 키워드 — 기본 목록에서 숨깁니다</li>
           <li><b>미확인</b>으로 표시된 지표는 데이터가 없어 점수 계산에서 빠진 것입니다. 숫자를 지어내지 않습니다.</li>

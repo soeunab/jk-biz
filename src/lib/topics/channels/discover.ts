@@ -7,6 +7,8 @@ import { getBrowser } from "../../browser";
 import { generateJson } from "../../llm";
 import type { JobContext } from "../../jobs/queue";
 import { normalizeKeyword } from "../scoring";
+import { adVolumes, ensureKeywordInTitle, expandKeyword, isHeadKeyword, volumeOf, type LongtailResult } from "../longtail";
+import type { AdKeyword } from "../sources";
 import { COLLECTORS } from "./collectors";
 import { defaultDebugDir, firstLine } from "./collectors/common";
 import { DAUM_TREND_SOURCE } from "./collectors/daum";
@@ -19,11 +21,12 @@ import { comma, fmtAgo, fmtCount, norm, tokens } from "./text";
 import { CHANNEL_IDS, type ChannelId, type ChannelItem, type ChannelResult } from "./types";
 
 /**
- * 실시간 채널 발굴 (contents-finder 포팅) — 기존 자동완성 발굴(topics/discover.ts)과 나란히 쓰는 두 번째 방식.
+ * 실시간 트렌드 발굴 (contents-finder 포팅) — 기존 자동완성 발굴(topics/discover.ts)과 나란히 쓰는 두 번째 방식.
  * 6개 채널에서 지금 화제인 소재를 모아 → 같은 사건끼리 묶고(crossref) → 근거와 함께 점수화(scoring) →
  * 부정 사건·정치는 제외, 고른 카테고리 밖은 따로 빼고 → 상위 소재만 AI 로 제목·구성안을 붙여 Topic 으로 저장합니다.
  *
- * 숫자는 채널에서 실제로 수집한 값만 씁니다. 검색량·문서수처럼 이 방식으로 알 수 없는 지표는 null(미확인)로 둡니다.
+ * 저장 전에 소재의 대표어를 롱테일로 확장(자동완성·"함께 많이 찾는"·검색광고)해 AI 가 그중에서 제목 키워드를 고르게 하고,
+ * 네이버에 검색량이 잡힌 문구면 그 공식 수치를 붙입니다. 막 터진 이슈라 아직 데이터가 없으면 null(미확인).
  * 점수 근거 문장(rationale)은 AI 가 아니라 규칙이 수집 값으로 만든 사실 문장입니다.
  */
 
@@ -42,8 +45,8 @@ export const ChannelIdeaSchema = z.object({
   ideas: z.array(
     z.object({
       groupId: z.number().int().describe("소재 번호 (입력의 [소재 #번호] 그대로)"),
-      keyword: z.string().describe("검색창에 칠 대표 키워드 2~20자 — 수집 근거 제목에 실제로 나온 단어로"),
-      titles: z.array(z.string()).min(1).max(3).describe("추천 제목 1~3개 (핵심 키워드를 앞쪽에, 25~40자, 과장·낚시·부정 표현 금지)"),
+      keyword: z.string().describe("제목 핵심 키워드 — 소재의 '롱테일 후보'가 있으면 그중 하나를 글자 그대로, 없으면 수집 근거 제목에 실제로 나온 단어(2~20자)"),
+      titles: z.array(z.string()).min(1).max(3).describe("추천 제목 1~3개 (keyword 를 형태 변형 없이 맨 앞에, 25~40자, 과장·낚시·부정 표현 금지)"),
       angle: z.string().describe("차별화 관점 한 줄"),
       outline: z.array(z.string()).describe("글 구성안 (도입~마무리, 5~8단계)"),
       caution: z.string().describe("작성 시 주의점 한 줄"),
@@ -59,6 +62,43 @@ export type Analysis = { groups: Group[]; ranked: Group[]; excluded: Group[]; of
 /** 키워드형 항목(구글 트렌드·네이트/다음 실시간 키워드)의 제목 */
 function isKeywordItem(i: ChannelItem) {
   return i.channel === "google_trends" || i.source === NATE_KEYWORD_SOURCE || i.source === DAUM_TREND_SOURCE;
+}
+
+/** 롱테일 확장의 출발점: 실시간 검색어(키워드형 항목) → 짧은 소재명 → 핵심 토큰 2개 순 */
+export function groupBase(g: Group): string {
+  const kw = g.items.find((i) => isKeywordItem(i) && i.title.trim().length <= 20)?.title.trim();
+  if (kw) return kw;
+  const label = g.label.trim();
+  if (label.length <= 15 && !/[“”"‘’'…·,!?]/.test(label)) return label;
+  return [...g.core].slice(0, 2).join(" ") || label.slice(0, 15);
+}
+
+/**
+ * 확장 출발점 고르기: 실시간 검색어가 있으면 그것, 아니면 헤드라인의 2~3단어 조각(및 긴 단어) 중
+ * 네이버 월검색량이 가장 큰 것 — "사람들이 실제로 치는 말"을 데이터로 고릅니다.
+ */
+export async function chooseBase(g: Group, network: boolean): Promise<string> {
+  const fallback = groupBase(g);
+  if (!network || g.items.some((i) => isKeywordItem(i) && i.title.trim().length <= 20)) return fallback;
+  const words = g.label.replace(/[“”"‘’'…·,!?()[\]<>|/~]/g, " ").split(/\s+/).filter(Boolean);
+  const grams = new Set<string>();
+  for (let n = 2; n <= 3; n++) for (let i = 0; i + n <= words.length; i++) grams.add(words.slice(i, i + n).join(" "));
+  for (const w of words) if (normalizeKeyword(w).length >= 5) grams.add(w);
+  const hints = [fallback, ...[...grams].filter((x) => normalizeKeyword(x).length >= 4 && !/^[\d\s]+$/.test(x))].slice(0, 20);
+  const ad = await adVolumes(hints).catch(() => new Map<string, AdKeyword>());
+  const best = hints
+    .map((h) => ({ h, v: volumeOf(ad.get(normalizeKeyword(h))) }))
+    .filter((x) => x.v != null && x.v >= 10)
+    .sort((a, b) => (b.v ?? 0) - (a.v ?? 0))[0];
+  return best?.h ?? fallback;
+}
+
+function longtailLine(lt: LongtailResult | undefined): string {
+  const measured = (lt?.candidates ?? []).filter((c) => c.volume != null && !isHeadKeyword(c.keyword)).slice(0, 8);
+  if (!measured.length) return "롱테일 후보: 네이버 검색량이 아직 잡힌 문구 없음 — 수집 근거 제목의 단어로 keyword 를 정하세요";
+  return `롱테일 후보(네이버 실제 월검색량 — keyword 는 이 중 하나를 글자 그대로): ${measured
+    .map((c) => `${c.keyword}(월 ${c.volume!.toLocaleString("ko-KR")}${c.competitionScore != null ? `, 경쟁점수 ${Math.round(c.competitionScore)}` : ""})`)
+    .join(", ")}`;
 }
 
 /**
@@ -182,7 +222,7 @@ export async function discoverFromChannels(opts: ChannelDiscoverOptions = {}, ct
   const category = opts.category?.trim() || NO_RESTRICTION;
   const limit = Math.min(Math.max(opts.limit ?? 10, 1), 30);
   const channels = (opts.channels?.length ? opts.channels : CHANNEL_IDS).filter((c) => CHANNEL_IDS.includes(c));
-  await log(`실시간 채널 발굴 시작 — 카테고리: ${category} · 채널 ${channels.length}개`);
+  await log(`실시간 트렌드 발굴 시작 — 카테고리: ${category} · 채널 ${channels.length}개`);
 
   // 1) 수집
   const results = await collectChannels(channels, log);
@@ -205,25 +245,39 @@ export async function discoverFromChannels(opts: ChannelDiscoverOptions = {}, ct
     return { created: 0, excluded: excluded.length, offTopic: offTopic.length, channels: status };
   }
 
-  // 3) AI 기획 — 기존 라우팅(구독 Claude Code / 로컬 Ollama / 수동)을 그대로 사용
+  // 3) 롱테일 확장 — 소재의 대표어를 실제 검색 문구(자동완성·"함께 많이 찾는")로 넓히고 문구마다 네이버 공식 검색량 확인
+  //    (픽스처·오프라인 모드에서는 네트워크를 쓰지 않음)
+  const network = !process.env.CHANNELS_FIXTURE?.trim();
+  const longtails = new Map<number, LongtailResult>();
+  for (const g of top) {
+    longtails.set(g.id, await expandKeyword(await chooseBase(g, network), { network, docs: 6 }));
+  }
+  const withVolume = [...longtails.values()].filter((lt) => lt.candidates.some((c) => c.volume != null && !isHeadKeyword(c.keyword))).length;
+  if (network) await log(`롱테일 확장: 소재 ${top.length}개 중 ${withVolume}개에서 네이버 검색량이 잡힌 롱테일 문구 확인`);
+  await ctx?.progress(75, "롱테일 확장 완료");
+
+  // 4) AI 기획 — 기존 라우팅(구독 Claude Code / 로컬 Ollama / 수동)을 그대로 사용
   const brand = await getBrand();
+  const today = new Date().toISOString().slice(0, 10);
   const blogTopic = opts.domain?.trim() || (category !== NO_RESTRICTION ? `네이버 블로그 '${category}' 분야 정보 블로그` : `${brand.name} — ${brand.mission}`);
   const { ideas } = await generateJson({
     name: "channelIdeas",
     task: "light",
-    title: `실시간 채널 소재 기획 (${top.length}개)`,
+    title: `실시간 트렌드 소재 기획 (${top.length}개)`,
     system: `당신은 한국어 블로그 콘텐츠 기획자입니다. 주어진 '실제 수집 데이터'만 근거로 삼고, 데이터에 없는 사실·수치는 지어내지 않습니다.
 부정적·선정적·추측성 표현, 특정인 비하, 사건사고 자극 표현은 쓰지 않습니다.
 이번 기획 대상 블로그의 주제: ${blogTopic}
 독자 페르소나:
 ${Object.entries(PERSONAS).map(([k, p]) => `- ${k} (${p.label}): ${p.description}`).join("\n")}`,
     prompt: `다음은 오늘 여러 채널에서 교차 확인된 블로그 소재 후보입니다. 소재마다 글 기획을 하나씩 만들어 주세요.
+오늘 날짜: ${today}
 - groupId 는 [소재 #번호] 그대로 쓰세요. 모든 소재에 대해 하나씩 답하세요.
-- keyword 는 검색창에 칠 대표 키워드로, 수집 근거 제목에 실제로 나온 단어를 쓰세요.
+- keyword: 소재에 "롱테일 후보"가 있으면 그중 하나를 글자 그대로 고르세요. 검색량이 적당하고 경쟁점수가 높은 구체적인 문구(2단어 이상)가 상위 노출에 유리합니다. 후보가 없으면 수집 근거 제목에 실제로 나온 단어로 정하세요.
+- 제목은 keyword 를 형태 변형 없이(띄어쓰기·조사 붙이지 말고) 맨 앞에 두세요. 뒤쪽에 다른 후보 문구를 1개 자연스럽게 섞어도 됩니다.
 - 이 블로그 주제가 AI 도구와 무관하면 tool 은 빈 문자열로 두고, 소재를 억지로 AI 도구 활용법으로 비틀지 마세요.
-- 제목·구성안에 수집 근거에 없는 날짜·금액·수치를 넣지 마세요. 필요하면 "공식 발표로 확인" 같은 단계를 구성안에 넣으세요.
+- 제목·구성안에 수집 근거에 없는 날짜·금액·수치를 넣지 마세요. 연도를 쓰려면 오늘 기준 연도만 쓰세요. 필요하면 "공식 발표로 확인" 같은 단계를 구성안에 넣으세요.
 
-${top.map((g) => `[소재 #${g.id}] ${g.label}\n분류: ${g.category}\n점수 근거: ${g.reasons.slice(0, 4).join("; ")}\n수집 근거:\n${evidenceLines(g)}`).join("\n\n")}`,
+${top.map((g) => `[소재 #${g.id}] ${g.label}\n분류: ${g.category}\n점수 근거: ${g.reasons.slice(0, 4).join("; ")}\n${longtailLine(longtails.get(g.id))}\n수집 근거:\n${evidenceLines(g)}`).join("\n\n")}`,
     schema: ChannelIdeaSchema,
     effort: "medium",
     maxTokens: 8000,
@@ -231,45 +285,82 @@ ${top.map((g) => `[소재 #${g.id}] ${g.label}\n분류: ${g.category}\n점수 �
   });
   await ctx?.progress(85, "AI 기획 완료");
 
-  // 4) 저장 (추천 소재만)
+  // 5) 저장 (추천 소재만)
+  // 소재 번호로 매칭하되, 작은 로컬 모델이 번호를 1·2·3 으로 다시 매기는 경우가 있어 키워드·순서로도 매칭
   const byId = new Map(ideas.map((i) => [i.groupId, i]));
+  const used = new Set<ChannelIdea>();
+  const ideaFor = (g: Group, idx: number): ChannelIdea | undefined => {
+    const direct = byId.get(g.id);
+    if (direct && !used.has(direct)) return direct;
+    const lt = longtails.get(g.id);
+    const names = [g.label, groupBase(g), ...(lt?.candidates.map((c) => c.keyword) ?? [])].map(normalizeKeyword);
+    const byKeyword = ideas.find((i) => {
+      const k = normalizeKeyword(i.keyword);
+      return !used.has(i) && k.length >= 2 && names.some((n) => n.includes(k) || k.includes(n));
+    });
+    if (byKeyword) return byKeyword;
+    return ideas.length === top.length && !used.has(ideas[idx]) ? ideas[idx] : undefined;
+  };
   const seen = new Set(existing);
   let created = 0;
-  for (const g of top) {
-    const idea = byId.get(g.id);
+  let longtailUsed = 0;
+  let unmatched = 0;
+  for (const [idx, g] of top.entries()) {
+    const idea = ideaFor(g, idx);
+    if (idea) used.add(idea);
+    else unmatched++;
+    const lt = longtails.get(g.id);
     const kw = idea?.keyword.trim();
-    const keyword = kw && kw.length <= 40 ? kw : g.label;
+    // AI 기획이 없으면 헤드라인 통째가 아니라 롱테일(없으면 소재 대표어)을 키워드로
+    let keyword = kw && kw.length <= 40 ? kw : (lt?.best?.keyword ?? groupBase(g));
+    let metric = lt?.candidates.find((c) => normalizeKeyword(c.keyword) === normalizeKeyword(keyword));
+    // 헤드 키워드를 골랐거나, 롱테일 후보가 있는데 후보 밖 단어를 골랐으면 검색량이 확인된 최적 롱테일로 — 상위 노출이 목적
+    if (lt?.best && (isHeadKeyword(keyword) || metric?.volume == null)) {
+      keyword = lt.best.keyword;
+      metric = lt.best;
+    }
     const nk = normalizeKeyword(keyword);
     if (!nk || seen.has(nk)) continue;
     seen.add(nk);
+    if (metric?.volume != null) longtailUsed++;
     const channelCount = g.metrics?.channels.length ?? 0;
+    const related = (lt?.candidates ?? [])
+      .filter((c) => normalizeKeyword(c.keyword) !== nk)
+      .slice(0, 12)
+      .map((c) => ({ keyword: c.keyword, volume: c.volume }));
     await db.topic.create({
       data: {
         origin: "channels",
         category: g.category,
         keyword,
         normalizedKeyword: nk,
-        title: idea?.titles[0]?.trim() || g.label,
+        title: idea ? ensureKeywordInTitle(idea.titles[0]?.trim() || keyword, keyword) : keyword,
         angle: idea?.angle ?? "",
         persona: idea?.persona ?? "GENERAL",
         tool: idea?.tool?.trim() ?? "",
         targetPlatform: "NAVER",
         intent: "informational",
-        // 이 방식으로는 검색량·문서수·경쟁도를 알 수 없음 → 미확인(null)
-        searchVolume: null,
-        documentCount: null,
+        // 고른 키워드가 네이버에 검색량이 잡힌 롱테일이면 그 공식 수치, 아니면 미확인(null)
+        searchVolume: metric?.volume ?? null,
+        documentCount: metric?.documentCount ?? null,
         trendScore: null,
-        competitionScore: null,
+        competitionScore: metric?.competitionScore ?? null,
         monetizationScore: 0,
         totalScore: g.score,
         confidence: Math.min(3, channelCount),
         verification: channelCount >= 2 ? "VERIFIED" : "SUGGESTED",
         rationale: g.reasons.join(" · "),
-        signals: groupSignals(g, g.category, status, idea) as unknown as Prisma.InputJsonValue,
+        signals: {
+          ...groupSignals(g, g.category, status, idea),
+          longtail: lt ? { base: lt.base, best: lt.best?.keyword ?? null, candidates: lt.candidates.slice(0, 10) } : null,
+          related,
+        } as unknown as Prisma.InputJsonValue,
       },
     });
     created++;
   }
+  if (unmatched) await log(`⚠️ AI 기획과 매칭되지 않은 소재 ${unmatched}개는 롱테일 키워드만 붙여 저장 (제목·구성안은 원고 생성 때 작성)`);
+  if (network) await log(`저장한 ${created}개 중 ${longtailUsed}개는 네이버 검색량이 확인된 롱테일을 제목 키워드로 사용`);
   await ctx?.progress(100, `추천 소재 ${created}개 저장`);
   return { created, excluded: excluded.length, offTopic: offTopic.length, channels: status };
 }

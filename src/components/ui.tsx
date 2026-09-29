@@ -21,7 +21,7 @@ export const PLATFORM: Record<string, { label: string; cls: string }> = {
 };
 
 export const VERIFICATION: Record<string, { label: string; cls: string }> = {
-  VERIFIED: { label: "공식데이터 확인", cls: "bg-emerald-50 text-emerald-700" },
+  VERIFIED: { label: "네이버 공식데이터 확인", cls: "bg-emerald-50 text-emerald-700" },
   SUGGESTED: { label: "자동완성 확인", cls: "bg-sky-50 text-sky-700" },
   UNVERIFIED: { label: "미검증", cls: "bg-gray-100 text-gray-500" },
 };

@@ -5,7 +5,10 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export const PATCH = handle(async (req: Request, { params }: Ctx) => {
   const { status } = (await req.json()) as { status: string };
-  await db.topic.update({ where: { id: (await params).id }, data: { status } });
+  await db.topic.update({
+    where: { id: (await params).id },
+    data: { status, dismissedAt: status === "DISMISSED" ? new Date() : null },
+  });
   return ok();
 });
 

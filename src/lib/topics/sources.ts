@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { env } from "../env";
 import { ymd, daysAgo } from "../util";
+import { withPage } from "../browser";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36";
 
@@ -15,6 +16,41 @@ export async function naverAutocomplete(q: string): Promise<string[]> {
   const url = `https://ac.search.naver.com/nx/ac?q=${encodeURIComponent(q)}&con=1&frm=nv&ans=2&r_format=json&r_enc=UTF-8&r_unicode=0&t_koreng=1&run=2&rev=4&q_enc=UTF-8&st=100`;
   const data = await fetchJson<{ items?: string[][][] }>(url, { headers: { "User-Agent": UA } });
   return (data.items?.[0] ?? []).map((row) => row[0]).filter(Boolean);
+}
+
+/**
+ * 네이버 통합검색 결과 페이지의 "함께 많이 찾는" 위젯 (키 불필요, 화면 구조 스크래핑).
+ * 공식 API 가 아니라 화면이 바뀌면 깨질 수 있음 — 실패하면 빈 배열.
+ */
+export async function naverRelatedSearch(q: string): Promise<string[]> {
+  return withPage(
+    async (page) => {
+      await page.goto(`https://search.naver.com/search.naver?query=${encodeURIComponent(q)}`, { waitUntil: "domcontentloaded", timeout: 15_000 });
+      await page.waitForTimeout(1500);
+      return page.evaluate(() => {
+        const heading = [...document.querySelectorAll("*")].find(
+          (el) => el.children.length === 0 && el.textContent?.trim() === "함께 많이 찾는",
+        );
+        let container: Element | null = heading?.parentElement ?? null;
+        for (let i = 0; i < 6 && container; i++) {
+          if (container.querySelectorAll("a").length >= 5) break;
+          container = container.parentElement;
+        }
+        if (!container) return [];
+        const out: string[] = [];
+        for (const a of container.querySelectorAll("a")) {
+          try {
+            const query = new URL((a as HTMLAnchorElement).href).searchParams.get("query");
+            if (query) out.push(query);
+          } catch {
+            /* 무시 */
+          }
+        }
+        return out;
+      });
+    },
+    { width: 1280, height: 1400 },
+  ).catch(() => []);
 }
 
 /** 구글 자동완성 (키 불필요) */
@@ -40,21 +76,41 @@ function toNum(v: unknown): number {
   return 0;
 }
 
-/** 네이버 검색광고 키워드도구 — 월간 검색량, 광고 경쟁도 */
+/**
+ * 네이버 검색광고 키워드도구 — 월간 검색량, 광고 경쟁도.
+ * 힌트 5개씩 나눠 호출하고, 한 묶음이 실패해도(특수문자 힌트·일시적 제한) 나머지는 계속합니다. 전부 실패하면 첫 오류를 던집니다.
+ */
 export async function naverSearchAdKeywords(hints: string[]): Promise<AdKeyword[]> {
   const cred = env.naverSearchAd;
-  if (!cred || hints.length === 0) return [];
+  // API 는 힌트를 공백·특수문자 없이 받습니다.
+  const clean = [...new Set(hints.map((h) => h.replace(/[^\p{L}\p{N}]/gu, "")).filter(Boolean))];
+  if (!cred || clean.length === 0) return [];
   const path = "/keywordstool";
   const out: AdKeyword[] = [];
-  // API 는 한 번에 힌트 키워드 5개까지, 공백 없이 받습니다.
-  for (let i = 0; i < hints.length; i += 5) {
-    const batch = hints.slice(i, i + 5).map((h) => h.replace(/\s+/g, ""));
+  const errors: Error[] = [];
+  const call = async (batch: string[]) => {
     const ts = Date.now().toString();
     const signature = createHmac("sha256", cred.secret).update(`${ts}.GET.${path}`).digest("base64");
     const url = `https://api.searchad.naver.com${path}?hintKeywords=${encodeURIComponent(batch.join(","))}&showDetail=1`;
-    const data = await fetchJson<{ keywordList?: Record<string, unknown>[] }>(url, {
+    return fetchJson<{ keywordList?: Record<string, unknown>[] }>(url, {
       headers: { "X-Timestamp": ts, "X-API-KEY": cred.key, "X-Customer": cred.customer, "X-Signature": signature },
     });
+  };
+  for (let i = 0; i < clean.length; i += 5) {
+    const batch = clean.slice(i, i + 5);
+    let data: { keywordList?: Record<string, unknown>[] };
+    try {
+      data = await call(batch);
+    } catch {
+      // 호출 제한(429) 등 일시적 오류는 잠깐 쉬고 한 번만 다시 시도
+      await new Promise((r) => setTimeout(r, 800));
+      try {
+        data = await call(batch);
+      } catch (e) {
+        errors.push(e as Error);
+        continue;
+      }
+    }
     for (const k of data.keywordList ?? []) {
       out.push({
         keyword: String(k.relKeyword),
@@ -66,16 +122,21 @@ export async function naverSearchAdKeywords(hints: string[]): Promise<AdKeyword[
       });
     }
   }
+  if (!out.length && errors.length) throw errors[0];
   return out;
 }
+
+// 네이버 개발자센터 검색·데이터랩 API 는 NAVER API HUB(NCP)로 이전됨 (2026-06-25, 개발자센터 신규 발급은 2026-07-31 종료).
+// 엔드포인트 https://openapi.naver.com/... → https://naverapihub.apigw.ntruss.com/..., 인증 헤더도 X-Naver-Client-Id/Secret → X-NCP-APIGW-API-KEY-ID/KEY 로 변경.
+const API_HUB = "https://naverapihub.apigw.ntruss.com";
 
 /** 네이버 블로그 검색 결과 총 문서 수 (경쟁 강도 지표) */
 export async function naverBlogDocCount(q: string): Promise<number | null> {
   const cred = env.naverOpenApi;
   if (!cred) return null;
   const data = await fetchJson<{ total?: number }>(
-    `https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(q)}&display=1`,
-    { headers: { "X-Naver-Client-Id": cred.id, "X-Naver-Client-Secret": cred.secret } },
+    `${API_HUB}/search/v1/blog?query=${encodeURIComponent(q)}&display=1`,
+    { headers: { "X-NCP-APIGW-API-KEY-ID": cred.id, "X-NCP-APIGW-API-KEY": cred.secret } },
   );
   return data.total ?? null;
 }
@@ -93,14 +154,15 @@ export async function naverTrendMomentum(keywords: string[]): Promise<Record<str
       timeUnit: "week",
       keywordGroups: batch.map((k) => ({ groupName: k, keywords: [k] })),
     };
+    // 한 묶음이 실패해도 나머지 키워드의 트렌드는 계속 조회
     const data = await fetchJson<{ results?: { title: string; data: { ratio: number }[] }[] }>(
-      "https://openapi.naver.com/v1/datalab/search",
+      `${API_HUB}/search-trend/v1/search`,
       {
         method: "POST",
-        headers: { "X-Naver-Client-Id": cred.id, "X-Naver-Client-Secret": cred.secret, "Content-Type": "application/json" },
+        headers: { "X-NCP-APIGW-API-KEY-ID": cred.id, "X-NCP-APIGW-API-KEY": cred.secret, "Content-Type": "application/json" },
         body: JSON.stringify(body),
       },
-    );
+    ).catch(() => ({ results: [] }));
     for (const r of data.results ?? []) {
       const ratios = r.data.map((d) => d.ratio);
       const recent = avg(ratios.slice(-4));

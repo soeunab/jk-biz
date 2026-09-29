@@ -4,7 +4,7 @@ function read(name: string): string | undefined {
   return v && v.trim() !== "" ? v.trim() : undefined;
 }
 
-export type CronName = "CRON_TOPIC_DISCOVERY" | "CRON_CHANNEL_DISCOVERY" | "CRON_ANALYTICS_SYNC" | "CRON_INSIGHTS";
+export type CronName = "CRON_TOPIC_DISCOVERY" | "CRON_CHANNEL_DISCOVERY" | "CRON_ANALYTICS_SYNC" | "CRON_INSIGHTS" | "CRON_TOPIC_CLEANUP";
 
 export const env = {
   get dashboardPassword() { return read("DASHBOARD_PASSWORD"); },
@@ -43,7 +43,7 @@ export const env = {
   get metaGraphVersion() { return read("META_GRAPH_VERSION") ?? "v21.0"; },
 
   cron(name: CronName) { return read(name); },
-  /** 예약 실시간 채널 발굴의 카테고리 (비우면 "주제 선택 보류") */
+  /** 예약 실시간 트렌드 발굴의 카테고리 (비우면 "주제 선택 보류") */
   get channelDiscoveryCategory() { return read("CHANNEL_DISCOVERY_CATEGORY"); },
 };
 

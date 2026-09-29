@@ -8,7 +8,8 @@ export const REVENUE_SOURCE: Record<string, string> = {
 
 export const JOB_LABEL: Record<string, string> = {
   "topic.discover": "주제 발굴",
-  "topic.channels": "실시간 채널 발굴",
+  "topic.channels": "실시간 트렌드 발굴",
+  "topic.cleanup": "보류 주제 정리",
   "post.generate": "원고 생성",
   "post.images": "이미지 생성",
   "post.aiReview": "AI 사실 검수",

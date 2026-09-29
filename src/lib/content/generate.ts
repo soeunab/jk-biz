@@ -1,4 +1,4 @@
-import { getBrand, PERSONAS, type Persona } from "../brand";
+import { getBrand, accountBrand, PERSONAS, type Persona } from "../brand";
 import { generateJson, research } from "../llm";
 import { josa, ymd } from "../util";
 import { buildSystemPrompt, buildUserPrompt, type BriefInput } from "./prompts";
@@ -8,7 +8,9 @@ export async function generateManuscript(
   brief: Omit<BriefInput, "today" | "researchNotes" | "researchSources">,
   opts: { log?: (m: string) => Promise<unknown> | void; skipResearch?: boolean } = {},
 ): Promise<{ manuscript: Manuscript; research: { notes: string; sources: { title: string; url: string }[]; at: string } }> {
-  const brand = await getBrand();
+  // 원고 안에서 "브랜드명"으로 자신을 언급하는 부분(수석 에디터 소속·저자 소개·GEO 엔티티 언급)은
+  // 이 원고가 속한 계정 이름을 써야 함 — 여러 블로그를 운영할 때 다른 계정 원고에 전역 브랜드명이 섞여 나가면 안 됨
+  const brand = accountBrand(await getBrand(), brief.accountName ? { name: brief.accountName, concept: brief.accountConcept ?? "" } : null);
   const today = ymd(new Date());
 
   let researchNotes = "";

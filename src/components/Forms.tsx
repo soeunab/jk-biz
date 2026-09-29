@@ -131,7 +131,7 @@ export function ChannelDiscoverForm() {
         <label className="label">개수</label>
         <input className="input w-20" type="number" min={1} max={30} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
       </div>
-      <button className="btn-primary" disabled={busy || !channels.length}>{busy && <Spinner />}📡 실시간 채널에서 발굴</button>
+      <button className="btn-primary" disabled={busy || !channels.length}>{busy && <Spinner />}📡 실시간 트렌드에서 발굴</button>
       <div className="md:col-span-3">
         <label className="label">블로그 주제 설명 (선택 — 비우면 카테고리 기준. AI 가 제목·구성안을 이 주제에 맞춰요)</label>
         <input className="input" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="예: 경제·생활 혜택 정보 (AI 도구와 무관, 정확한 사실 기반 생활 정보 블로그)" />
@@ -199,6 +199,9 @@ export function ManualPostForm({ accounts, sources = [] }: { accounts: AccountOp
       }}
     >
       <h2 className="font-semibold">키워드로 바로 원고 만들기</h2>
+      <p className="-mt-2 text-xs text-gray-500">
+        &quot;ai&quot;·&quot;클로드&quot;처럼 짧은 단어를 넣으면 실제로 검색되는 롱테일 중 경쟁이 덜한 문구(예: 클로드 요금제)로 자동 전환해 제목 맨 앞에 씁니다. 원하는 문구가 정해져 있으면 구체적으로 적어 주세요.
+      </p>
       <div className="grid gap-3 md:grid-cols-3">
         <div>
           <label className="label">핵심 키워드 *</label>

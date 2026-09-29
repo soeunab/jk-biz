@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 const ORIGINS = [
   ["", "전체"],
   ["autocomplete", "🔎 검색어 기반"],
-  ["channels", "📡 실시간 채널"],
+  ["channels", "📡 실시간 트렌드"],
 ] as const;
 
 function ChannelEvidence({ s }: { s: ChannelTopicSignals }) {
@@ -89,7 +89,7 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
     <div className="flex flex-col gap-6">
       <PageHeader
         title="주제 발굴"
-        desc="두 가지 방식: ① 검색어 기반 — 자동완성 후보를 네이버 검색광고·블로그 문서수·데이터랩 같은 공식 데이터로 검증 ② 실시간 채널 — 네이버 홈판·랭킹·네이트·구글 트렌드·다음·구글 뉴스에서 지금 화제인 소재를 교차검증."
+        desc="두 가지 방식: ① 검색어 기반 — 자동완성 후보를 네이버 검색광고·블로그 문서수·데이터랩 같은 공식 데이터로 검증 ② 실시간 트렌드 — 네이버 홈판·랭킹·네이트·구글 트렌드·다음·구글 뉴스에서 지금 화제인 소재를 교차검증."
         actions={<AutoRefresh active={running > 0} />}
       />
       <div className="flex flex-col gap-2">
@@ -97,7 +97,7 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
         <DiscoverForm />
       </div>
       <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-gray-700">📡 실시간 채널 발굴 <span className="font-normal text-gray-400">— 오늘 여러 채널에서 동시에 화제인 소재 (이슈·홈판 노출용)</span></h2>
+        <h2 className="text-sm font-semibold text-gray-700">📡 실시간 트렌드 발굴 <span className="font-normal text-gray-400">— 오늘 여러 채널에서 동시에 화제인 소재 (이슈·홈판 노출용)</span></h2>
         <ChannelDiscoverForm />
       </div>
 
@@ -165,6 +165,13 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
                     </div>
                     {t.angle && <div className="mt-1 text-xs text-gray-600">관점: {t.angle}</div>}
                     {!ch && t.rationale && <div className="mt-1 text-xs text-gray-600">📊 {t.rationale}</div>}
+                    {ch && t.searchVolume != null && (
+                      <div className="mt-1 text-xs text-gray-600">
+                        🔎 롱테일 네이버 월 검색 {formatNumber(t.searchVolume)}
+                        {t.documentCount != null ? ` · 문서 ${formatNumber(t.documentCount)}` : ""}
+                        {t.competitionScore != null ? ` · 경쟁점수 ${Math.round(t.competitionScore)}` : ""}
+                      </div>
+                    )}
                   </td>
                   {ch ? (
                     <td colSpan={4} className="max-w-lg">
@@ -188,6 +195,7 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
                       {t.status !== "USED" && <GenerateFromTopic topicId={t.id} accounts={accounts} defaultPlatform={t.targetPlatform} />}
                       {t.status === "NEW" && <ActionButton url={`/api/topics/${t.id}`} method="PATCH" body={{ status: "DISMISSED" }} label="보류" className="btn-secondary text-xs" />}
                       {t.status === "DISMISSED" && <ActionButton url={`/api/topics/${t.id}`} method="PATCH" body={{ status: "NEW" }} label="복원" className="btn-secondary text-xs" />}
+                      {t.status !== "USED" && <ActionButton url={`/api/topics/${t.id}`} method="DELETE" label="삭제" className="btn-danger text-xs" confirm="이 주제를 삭제할까요? 되돌릴 수 없습니다." />}
                     </div>
                   </td>
                 </tr>
@@ -206,7 +214,13 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
         <br />
         경쟁: 문서수÷검색량(포화도)이 낮을수록 높음 · 수익화: 광고경쟁도(있을 때)·검색의도·제휴상품 연관성 · 트렌드: 데이터랩 최근 4주 추이.
         <br />
-        📡 실시간 채널 점수(0~100)는 참여 채널 수·기사 신선도·네이버 랭킹·조회수·구글 트렌드 급등률 등 <b>수집한 값만</b>으로 계산한 화제성 지표이며, 수익 예측이 아닙니다. 검색량·문서수는 이 방식으로 알 수 없어 미확인입니다.
+        검색량·경쟁·트렌드는 모두 네이버 검색광고·데이터랩 데이터입니다. 블로거(구글) 대상으로 분류된 주제도 구글 자체 검색량 데이터는 없고, 이 네이버 데이터에 다른 가중치를 적용해 추정한 것입니다.
+        <br />
+        📡 실시간 트렌드 점수(0~100)는 참여 채널 수·기사 신선도·네이버 랭킹·조회수·구글 트렌드 급등률 등 <b>수집한 값만</b>으로 계산한 화제성 지표이며, 수익 예측이 아닙니다. 소재의 대표어를 롱테일로 확장해 네이버에 검색량이 잡힌 문구가 있으면 그 수치를 붙이고, 막 터진 이슈라 아직 데이터가 없으면 미확인으로 둡니다.
+        <br />
+        🎯 세 가지 방식 모두 &quot;ai·클로드&quot;처럼 문서가 과포화된 짧은 헤드 키워드 대신, 자동완성·&quot;함께 많이 찾는&quot;에서 모은 실제 검색 문구 중 검색량이 확인된 <b>롱테일</b>을 제목 맨 앞 키워드로 쓰고, 함께 검색되는 문구는 원고 소제목·FAQ에 반영합니다.
+        <br />
+        🗑 보류 상태로 7일 지난 주제는 매일 새벽 자동으로 삭제됩니다(복원하면 대상에서 빠집니다). 삭제 버튼으로 즉시 지울 수도 있습니다.
       </p>
     </div>
   );

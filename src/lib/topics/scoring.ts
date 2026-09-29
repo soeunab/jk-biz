@@ -74,12 +74,18 @@ export function detectIntent(keyword: string): Intent {
   return "informational";
 }
 
-export function relevance(keyword: string): number {
+/**
+ * 이 키워드가 지금 발굴 대상 블로그와 관련 있어 보이는지(0~100). 기본은 브랜드 미션(AI 도구) 기준 가중치이고,
+ * 계정 콘셉트·도메인이 따로 있으면(domainNeutral) AI 도구 관련 여부는 묻지 않고 범용 정보성 콘텐츠 여부만 봅니다
+ * — AI 도구와 무관한 계정에서 AI_TERMS 가 없다고 관련 없는 키워드로 오판(총점 하향·후보 탈락)하지 않도록.
+ */
+export function relevance(keyword: string, domainNeutral = false): number {
   const k = keyword.toLowerCase().replace(/\s/g, "");
   let s = 0;
-  if (AI_TERMS.some((t) => k.includes(t.replace(/\s/g, "")))) s += 60;
+  if (!domainNeutral && AI_TERMS.some((t) => k.includes(t.replace(/\s/g, "")))) s += 60;
   if (HOWTO_TERMS.some((t) => k.includes(t))) s += 25;
   if (/(1인가구|자취|혼자|프리랜서|직장인|회사|업무|보고서|엑셀|메일|회의)/.test(k)) s += 15;
+  if (domainNeutral) s += 20;
   return clamp(s, 0, 100);
 }
 
@@ -124,7 +130,7 @@ export function trendScore(momentum: number | null | undefined): number | null {
 
 export function verificationOf(m: KeywordMetrics): Verification {
   if (m.monthlySearch != null || m.momentum != null) return "VERIFIED";
-  if (m.sources.some((s) => s.endsWith("-ac") || s === "google-trends" || s === "naver-searchad")) return "SUGGESTED";
+  if (m.sources.some((s) => s.endsWith("-ac") || s === "google-trends" || s === "naver-searchad" || s === "naver-related")) return "SUGGESTED";
   return "UNVERIFIED";
 }
 
@@ -135,12 +141,12 @@ function weighted(parts: [number | null, number][]): number {
   return w ? known.reduce((a, [v, wt]) => a + v * wt, 0) / w : 0;
 }
 
-export function scoreKeyword(m: KeywordMetrics, affiliateTags: string[] = []): Scores {
+export function scoreKeyword(m: KeywordMetrics, affiliateTags: string[] = [], domainNeutral = false): Scores {
   const vs = volumeScore(m.monthlySearch);
   const cs = competitionScore(m.documentCount, m.monthlySearch);
   const ms = monetizationScore(m, affiliateTags);
   const ts = trendScore(m.momentum);
-  const rs = relevance(m.keyword);
+  const rs = relevance(m.keyword, domainNeutral);
   const intent = detectIntent(m.keyword);
   const confidence = [vs, cs, ts].filter((x) => x != null).length;
 

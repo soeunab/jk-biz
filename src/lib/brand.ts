@@ -62,6 +62,23 @@ export const DEFAULT_BRAND: Brand = {
   },
 };
 
+/**
+ * 계정별로 보이는 이름·저자 정보를 반영한 브랜드 — 여러 블로그를 운영할 때 전역 브랜드명("지원포유")이
+ * 다른 계정 원고·이미지·카드뉴스에 그대로 섞여 나가지 않도록 합니다. 문체·금지표현·제휴 고지 문구 등
+ * 사업 전체에 공통인 값은 그대로 두고, 이름·저자·AI 고지 문구의 브랜드명만 계정 이름으로 바꿉니다.
+ */
+export function accountBrand(brand: Brand, account?: { name: string; concept: string } | null): Brand {
+  const label = account?.name?.trim() || brand.name;
+  if (label === brand.name) return brand;
+  return {
+    ...brand,
+    name: label,
+    authorName: label,
+    authorBio: account?.concept?.trim() || brand.authorBio,
+    disclosure: { ...brand.disclosure, ai: brand.disclosure.ai.split(brand.name).join(label) },
+  };
+}
+
 export async function getBrand(): Promise<Brand> {
   const row = await db.setting.findUnique({ where: { key: "brand" } });
   return { ...DEFAULT_BRAND, ...((row?.value as Partial<Brand>) ?? {}) };

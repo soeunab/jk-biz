@@ -17,7 +17,7 @@ export const SectionSchema = z.object({
     .object({ headers: z.array(z.string()), rows: z.array(z.array(z.string())) })
     .nullable()
     .describe("비교·요약 표가 유용하면 작성, 아니면 null"),
-  tip: z.string().describe("지원포유 꿀팁 한 줄 (없으면 빈 문자열)"),
+  tip: z.string().describe("실전 꿀팁 한 줄 (없으면 빈 문자열)"),
   image: ImageSlotSchema.nullable(),
 });
 

@@ -30,7 +30,7 @@ export const OPTIMIZATION_RULES = `
 - 수치·사실에는 출처(공식 문서)를 붙이고 sources 에 URL 기록
 - 다른 글에 없는 고유 정보: 사용 시나리오, 프롬프트 예시 원문, 결과 비교 (실제 경험 수치는 자리표시로)
 - 인용하기 좋은 요약 문장(한 문장으로 완결된 핵심 정보)을 섹션마다 1개 이상
-- 브랜드명(지원포유)을 저자로 일관되게 언급해 엔티티 신뢰도 형성
+- 브랜드명(위 "수석 에디터" 소속 블로그명)을 저자로 일관되게 언급해 엔티티 신뢰도 형성
 
 [사실성 — 가장 중요]
 - 조사 메모·출처에 없는 고유명사(요금제명·모델명·기능명·제도명)와 가격·수치를 만들지 마세요.
@@ -97,6 +97,7 @@ export type BriefInput = {
   angle?: string;
   persona: Persona;
   tool?: string;
+  accountName?: string;
   accountConcept?: string;
   researchNotes?: string;
   researchSources?: { title: string; url: string }[];
@@ -107,8 +108,24 @@ export type BriefInput = {
   intent?: Intent | string;
   /** 크로스플랫폼 재발행 원본 (구조·핵심만 — 본문 전문은 전달하지 않음) */
   republishOf?: { platform: Platform; accountName: string; title: string; headings: string[]; keyPoints: string[] };
+  /** 함께 검색되는 롱테일 문구 (자동완성·"함께 많이 찾는"·검색광고 연관, volume = 네이버 월검색량) */
+  relatedKeywords?: { keyword: string; volume: number | null }[];
   today: string;
 };
+
+function relatedKeywordRules(b: BriefInput) {
+  if (!b.relatedKeywords?.length) return "";
+  const list = b.relatedKeywords
+    .slice(0, 12)
+    .map((r) => (r.volume != null ? `${r.keyword}(월 ${r.volume.toLocaleString("ko-KR")})` : r.keyword))
+    .join(", ");
+  return `
+[함께 검색되는 롱테일 문구 — 실제 자동완성·연관검색 데이터]
+${list}
+- 이 문구들은 같은 주제로 실제 사람들이 검색하는 표현입니다. 검색량이 큰 것부터 소제목(heading)·FAQ 질문·본문에 자연스럽게 녹여, 한 글이 여러 롱테일 검색에 함께 노출되게 하세요. 억지 나열·반복은 금지.
+- 제목(title) 뒤쪽에 이 중 1개를 자연스럽게 붙일 수 있으면 붙이세요(핵심 키워드는 반드시 맨 앞 그대로).
+- relatedKeywords 필드에는 이 목록에서 글과 실제로 관련된 문구를 우선 넣으세요.`;
+}
 
 export function buildUserPrompt(b: BriefInput) {
   const persona = PERSONAS[b.persona];
@@ -118,7 +135,7 @@ export function buildUserPrompt(b: BriefInput) {
   const intentLabel = b.intent && b.intent in INTENT_LABEL ? INTENT_LABEL[b.intent as Intent] : "정보탐색형";
   return `다음 기획으로 ${b.platform === "NAVER" ? "네이버 블로그" : "구글 블로거"} 원고를 작성하세요.
 
-- 핵심 키워드: ${b.keyword}
+- 핵심 키워드: ${b.keyword} — 제목(title) 맨 앞에 형태 변형 없이 그대로 넣고, focusKeyword 도 이 문구 그대로 쓰세요
 - 가제: ${b.title ?? "(자유)"}
 - 관점/구성: ${b.angle || "(자유)"}
 ${b.tool ? `- 주요 도구: ${b.tool}` : ""}
@@ -129,6 +146,7 @@ ${b.tool ? `- 주요 도구: ${b.tool}` : ""}
 - 권장 섹션 흐름(상황에 맞게 조정 가능): ${recipe.sections.join(" → ")}
 ${conceptRules(b.accountConcept)}
 ${b.avoidTitles?.length ? `- 이미 발행한 비슷한 글(제목·구성·예시가 겹치지 않게): ${b.avoidTitles.join(" / ")}` : ""}
+${relatedKeywordRules(b)}
 
 [최신 조사 메모 — 사실 확인에 활용, 없는 내용은 지어내지 말 것]
 ${b.researchNotes?.trim() || "(조사 메모 없음 — 요금·수치는 reviewChecklist 에 확인 필요로 남기세요)"}

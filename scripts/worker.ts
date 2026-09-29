@@ -65,6 +65,7 @@ async function main() {
   schedule("CRON_CHANNEL_DISCOVERY", "topic.channels", { category: env.channelDiscoveryCategory });
   schedule("CRON_ANALYTICS_SYNC", "analytics.sync");
   schedule("CRON_INSIGHTS", "insights.generate");
+  schedule("CRON_TOPIC_CLEANUP", "topic.cleanup");
   await loop();
 }
 

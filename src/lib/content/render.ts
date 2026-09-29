@@ -122,7 +122,7 @@ export function renderBlogger(m: Manuscript, o: RenderOptions): string {
     if (s.image) out.push(imageFigure(img(s.image.slot)));
     out.push(md(s.body));
     if (s.table) out.push(tableHtml(s.table));
-    if (s.tip) out.push(`<p style="background:#ecfdf5;border-radius:8px;padding:10px 14px;">💡 <b>지원포유 꿀팁</b> ${escapeHtml(s.tip)}</p>`);
+    if (s.tip) out.push(`<p style="background:#ecfdf5;border-radius:8px;padding:10px 14px;">💡 <b>꿀팁</b> ${escapeHtml(s.tip)}</p>`);
     for (const a of m.affiliate.filter((a) => a.afterSection === i + 1)) {
       const prod = products.get(a.productId);
       if (prod) out.push(productBox(prod, a.sentence, a.anchorText));
@@ -211,7 +211,8 @@ export function renderNaverSegments(m: Manuscript, o: RenderOptions): NaverSegme
   buf.push(simpleMd(m.intro));
 
   m.sections.forEach((s, i) => {
-    buf.push(`<p><br></p><h3><b>${escapeHtml(s.heading)}</b></h3>`);
+    const h = s.level === 3 ? 3 : 2;
+    buf.push(`<p><br></p><h${h}><b>${escapeHtml(s.heading)}</b></h${h}>`);
     if (s.image) pushImage(s.image.slot);
     buf.push(simpleMd(s.body));
     if (s.table) buf.push(tableHtml(s.table));
@@ -223,7 +224,7 @@ export function renderNaverSegments(m: Manuscript, o: RenderOptions): NaverSegme
   });
 
   if (o.sourceLink && !manuscriptHasSourceToken(m)) buf.push(sourceLinkParagraph(o));
-  buf.push(`<p><br></p><h3><b>자주 묻는 질문</b></h3>`);
+  buf.push(`<p><br></p><h2><b>자주 묻는 질문</b></h2>`);
   for (const f of m.faq) buf.push(`<p><b>Q. ${escapeHtml(f.q)}</b></p><p>A. ${escapeHtml(f.a)}</p><p><br></p>`);
   buf.push(simpleMd(m.conclusion), `<p><b>${escapeHtml(m.cta)}</b></p>`);
   // 출처 링크는 네이버에서도 문제되지 않음 (같은 링크 반복 게재만 피하면 됨) — 신뢰도·GEO 를 위해 노출

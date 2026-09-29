@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "../db";
-import { getBrand, type Persona } from "../brand";
+import { getBrand, accountBrand, type Persona } from "../brand";
 import { enqueue, type JobContext } from "../jobs/queue";
 import { buildPostImages } from "../images/pipeline";
 import { asObject, ymd } from "../util";
@@ -10,6 +10,7 @@ import { auditManuscript } from "./seo";
 import { similarity, SIMILARITY_WARN } from "./similarity";
 import { ManuscriptSchema, type Manuscript, type Platform } from "./types";
 import { normalizeKeyword } from "../topics/scoring";
+import { ensureKeywordInTitle, expandKeyword, relatedOf } from "../topics/longtail";
 import { detectRisk, manuscriptRiskText } from "./risk";
 import { ManualPendingError } from "../llm/manual";
 
@@ -148,16 +149,33 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
     });
     const source = await sourceLinkOf(post.sourcePostId);
     const sourceM = source ? readManuscript(source.content) : null;
+    const keyword = post.topic?.keyword ?? post.focusKeyword;
+
+    // 함께 검색되는 롱테일 문구 — 발굴 때 저장된 것이 없으면(연관 키워드 확장으로 추가한 주제 등) 지금 조회해 주제에 저장
+    let relatedKeywords = relatedOf(post.topic?.signals);
+    if (!relatedKeywords && keyword) {
+      const lt = await expandKeyword(keyword, { docs: 0 }).catch(() => null);
+      relatedKeywords = lt?.candidates.filter((c) => normalizeKeyword(c.keyword) !== normalizeKeyword(keyword)).slice(0, 12).map((c) => ({ keyword: c.keyword, volume: c.volume })) ?? null;
+      if (relatedKeywords?.length && post.topic) {
+        await db.topic.update({
+          where: { id: post.topic.id },
+          data: { signals: { ...asObject<Record<string, unknown>>(post.topic.signals, {}), related: relatedKeywords } as Prisma.InputJsonValue },
+        });
+      }
+    }
+    if (relatedKeywords?.length) await log(`함께 검색되는 롱테일 ${relatedKeywords.length}개를 소제목·FAQ 에 반영하도록 전달`);
 
     const { manuscript, research } = await generateManuscript(
       {
         platform,
-        keyword: post.topic?.keyword ?? post.focusKeyword,
+        keyword,
+        relatedKeywords: relatedKeywords ?? undefined,
         title: post.topic?.title ?? post.title,
         angle: post.topic?.angle,
         persona: (post.topic?.persona ?? "GENERAL") as Persona,
         tool: post.topic?.tool,
         intent: post.topic?.intent,
+        accountName: post.account?.name,
         accountConcept: post.account?.concept,
         internalLinks: internal.map((p) => ({ title: p.title, url: p.remoteUrl! })),
         affiliateProducts: products.map((p) => ({ id: p.id, name: p.name, program: p.program, tags: p.tags })),
@@ -177,6 +195,15 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
       { log },
     );
     await ctx?.progress(50, `원고 완성: ${manuscript.title}`);
+    // 검증된 롱테일 키워드가 제목 맨 앞·focusKeyword 에 그대로 남도록 (AI 가 바꿔 쓴 경우 되돌림)
+    if (keyword) {
+      manuscript.focusKeyword = keyword;
+      const fixed = ensureKeywordInTitle(manuscript.title, keyword);
+      if (fixed !== manuscript.title) {
+        await log(`제목에 핵심 키워드 "${keyword}"가 그대로 없어 앞에 붙였습니다`);
+        manuscript.title = fixed;
+      }
+    }
 
     await db.post.update({
       where: { id: postId },
@@ -213,7 +240,7 @@ export async function rerenderPost(postId: string, opts: { forPublish?: boolean;
   const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { assets: { orderBy: { order: "asc" } }, account: true } });
   const m = readManuscript(post.content);
   if (!m) throw new Error("원고 데이터가 없습니다.");
-  const brand = await getBrand();
+  const brand = accountBrand(await getBrand(), post.account);
   const settings = accountSettings(post.account?.settings);
   const products = await db.affiliateProduct.findMany({ where: { id: { in: m.affiliate.map((a) => a.productId) } } });
 

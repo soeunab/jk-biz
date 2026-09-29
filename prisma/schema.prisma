@@ -72,6 +72,8 @@ model Topic {
   category          String   @default("")
   /// NEW | SELECTED | USED | DISMISSED
   status            String   @default("NEW")
+  /// 보류(DISMISSED)로 바뀐 시각 — 일정 기간 지난 보류 주제 자동 정리 기준. 복원되면 null 로 되돌림
+  dismissedAt       DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

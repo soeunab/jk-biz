@@ -3,7 +3,7 @@ import JSZip from "jszip";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { db } from "../db";
-import { getBrand, type Brand } from "../brand";
+import { getBrand, accountBrand, type Brand } from "../brand";
 import { generateJson } from "../llm";
 import { FONT_LINK, FONT_STACK, renderHtmlToPng } from "../browser";
 import { saveMedia } from "../storage";
@@ -82,8 +82,11 @@ export async function createCardNews(opts: { postId?: string; topic?: string; th
 
 /** 워커: 슬라이드 기획 → PNG 렌더 → 캡션 */
 export async function runGenerateCardNews(cardNewsId: string, ctx?: JobContext) {
-  const card = await db.cardNews.findUniqueOrThrow({ where: { id: cardNewsId }, include: { post: true } });
-  const brand = await getBrand();
+  const card = await db.cardNews.findUniqueOrThrow({ where: { id: cardNewsId }, include: { post: { include: { account: true } } } });
+  // 카드뉴스 하단 계정 태그(@브랜드명)·기획 브랜드 설명도 계정마다 달라야 함 — 여러 블로그를 운영할 때 다른 계정 원고에 이 이름·미션이 섞여 나가면 안 됨
+  const brand = accountBrand(await getBrand(), card.post?.account);
+  const label = brand.name;
+  const mission = card.post?.account?.concept?.trim() || brand.mission;
   const m = card.post ? readManuscript(card.post.content) : null;
   try {
     const source = m
@@ -94,7 +97,7 @@ export async function runGenerateCardNews(cardNewsId: string, ctx?: JobContext) 
       name: "cardnews",
       task: "light",
       title: `카드뉴스: ${card.title}`,
-      system: `당신은 인스타그램 카드뉴스 에디터입니다. 브랜드: ${brand.name} — ${brand.mission}
+      system: `당신은 인스타그램 카드뉴스 에디터입니다. 브랜드: ${brand.name} — ${mission}
 원칙: 첫 장은 스크롤을 멈추게 하는 훅, 한 장에 메시지 하나, 짧고 쉬운 문장, 마지막 장은 저장·팔로우·블로그 방문 유도.`,
       prompt: `아래 블로그 원고를 카드뉴스 7장으로 만들어 주세요. 구성: cover 1장 → point/list 4~5장 → quote 또는 요약 1장 → cta 1장.
 각 SNS 캡션도 함께 작성하세요. 링크 자리는 {link} 로 표시하세요.
@@ -109,7 +112,7 @@ ${source}`,
 
     await db.asset.deleteMany({ where: { cardNewsId } });
     for (const [i, s] of result.slides.entries()) {
-      const png = await renderHtmlToPng(slideHtml(s, i, result.slides.length, brand, card.theme as ThemeName), CARD_W, CARD_H);
+      const png = await renderHtmlToPng(slideHtml(s, i, result.slides.length, { name: label }, card.theme as ThemeName), CARD_W, CARD_H);
       const saved = await saveMedia(png, "png", `cardnews/${cardNewsId}`);
       await db.asset.create({
         data: { cardNewsId, kind: "CARD_SLIDE", source: "TEMPLATE", slot: `slide${i + 1}`, localPath: saved.localPath, publicUrl: saved.relUrl, alt: s.title, order: i, width: CARD_W, height: CARD_H },

@@ -1,5 +1,6 @@
 import { discoverTopics, type DiscoverOptions } from "../topics/discover";
 import { discoverFromChannels, type ChannelDiscoverOptions } from "../topics/channels/discover";
+import { cleanupDismissedTopics } from "../topics/cleanup";
 import { runGeneratePost } from "../content/service";
 import { buildPostImages } from "../images/pipeline";
 import { rerenderPost, readManuscript } from "../content/service";
@@ -17,6 +18,7 @@ type Handler = (payload: Record<string, unknown>, ctx: JobContext) => Promise<un
 export const handlers: Record<JobType, Handler> = {
   "topic.discover": (p, ctx) => discoverTopics(p as DiscoverOptions, ctx),
   "topic.channels": (p, ctx) => discoverFromChannels(p as ChannelDiscoverOptions, ctx),
+  "topic.cleanup": (_p, ctx) => cleanupDismissedTopics(ctx),
   "post.generate": (p, ctx) => runGeneratePost(String(p.postId), ctx),
   "post.images": async (p, ctx) => {
     const post = await db.post.findUniqueOrThrow({ where: { id: String(p.postId) } });

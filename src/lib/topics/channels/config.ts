@@ -1,5 +1,5 @@
 /**
- * 실시간 채널 발굴 설정 — 원본 reference/contents-finder/config.yaml 의 값을 그대로 옮겼습니다.
+ * 실시간 트렌드 발굴 설정 — 원본 reference/contents-finder/config.yaml 의 값을 그대로 옮겼습니다.
  * 점수 가중치·필터 단어·수집 페이지를 바꾸려면 여기만 고치면 됩니다.
  */
 import { CATEGORY_LIST, NO_RESTRICTION } from "./filters";
