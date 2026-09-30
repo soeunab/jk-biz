@@ -99,9 +99,15 @@ export function volumeScore(v: number | null | undefined): number | null {
   return clamp(100 - (log - 4.5) * 40, 50, 100); // 대형 키워드는 경쟁 부담
 }
 
-/** 경쟁 점수: 문서 수 / 검색량 (포화 지수) 이 낮을수록 좋습니다. 둘 중 하나라도 모르면 미확인. */
+/**
+ * 경쟁 점수: 문서 수 / 검색량 (포화 지수) 이 낮을수록 좋습니다. 둘 중 하나라도 모르면 미확인.
+ * 검색량이 너무 작으면(월 50 미만) 분모가 작아 문서수 오차 하나에도 비율이 크게 흔들리고,
+ * 특히 막 뜬 실시간 이슈는 검색광고 월검색량이 아직 최근 화제를 반영 못 해(집계 지연) 문서수만
+ * 앞서가는 경우가 흔해 실제로는 좋은 소재인데도 경쟁이 매우 나쁜 것처럼(0점) 잘못 계산됩니다.
+ * 이런 경우 억지로 나쁜 점수를 매기지 않고 미확인(null)으로 둡니다.
+ */
 export function competitionScore(docs: number | null | undefined, volume: number | null | undefined): number | null {
-  if (docs == null || volume == null || volume <= 0) return null;
+  if (docs == null || volume == null || volume < 50) return null;
   const saturation = docs / volume;
   // 0.1 이하 매우 좋음(100) … 50 이상 매우 나쁨(0)
   return clamp(100 - Math.log10(saturation / 0.1 + 1) * 37, 0, 100);

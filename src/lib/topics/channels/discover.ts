@@ -6,8 +6,8 @@ import { getBrand, PERSONAS } from "../../brand";
 import { getBrowser } from "../../browser";
 import { generateJson } from "../../llm";
 import type { JobContext } from "../../jobs/queue";
-import { normalizeKeyword } from "../scoring";
-import { adVolumes, ensureKeywordInTitle, expandKeyword, isHeadKeyword, volumeOf, type LongtailResult } from "../longtail";
+import { monetizationScore, normalizeKeyword, trendScore } from "../scoring";
+import { adVolumes, ensureKeywordInTitle, expandKeyword, isHeadKeyword, momentumOf, volumeOf, type LongtailResult } from "../longtail";
 import type { AdKeyword } from "../sources";
 import { COLLECTORS } from "./collectors";
 import { defaultDebugDir, firstLine } from "./collectors/common";
@@ -301,6 +301,10 @@ ${top.map((g) => `[소재 #${g.id}] ${g.label}\n분류: ${g.category}\n점수 �
     if (byKeyword) return byKeyword;
     return ideas.length === top.length && !used.has(ideas[idx]) ? ideas[idx] : undefined;
   };
+  const affiliateTags = (await db.affiliateProduct.findMany({ where: { active: true }, select: { tags: true } }))
+    .flatMap((p) => p.tags.split(","))
+    .map((t) => t.trim())
+    .filter(Boolean);
   const seen = new Set(existing);
   let created = 0;
   let longtailUsed = 0;
@@ -323,6 +327,9 @@ ${top.map((g) => `[소재 #${g.id}] ${g.label}\n분류: ${g.category}\n점수 �
     if (!nk || seen.has(nk)) continue;
     seen.add(nk);
     if (metric?.volume != null) longtailUsed++;
+    // 롱테일 키워드에 실제 검색량이 있으면 데이터랩 트렌드·광고경쟁도 기반 수익성도 실제 값으로 계산
+    const momentum = network && metric?.volume != null ? await momentumOf(metric.keyword) : null;
+    const monetization = metric ? monetizationScore({ keyword, monthlySearch: metric.volume, documentCount: metric.documentCount, compIdx: metric.compIdx, adDepth: metric.adDepth, sources: [] }, affiliateTags) : 0;
     const channelCount = g.metrics?.channels.length ?? 0;
     const related = (lt?.candidates ?? [])
       .filter((c) => normalizeKeyword(c.keyword) !== nk)
@@ -343,9 +350,9 @@ ${top.map((g) => `[소재 #${g.id}] ${g.label}\n분류: ${g.category}\n점수 �
         // 고른 키워드가 네이버에 검색량이 잡힌 롱테일이면 그 공식 수치, 아니면 미확인(null)
         searchVolume: metric?.volume ?? null,
         documentCount: metric?.documentCount ?? null,
-        trendScore: null,
+        trendScore: trendScore(momentum),
         competitionScore: metric?.competitionScore ?? null,
-        monetizationScore: 0,
+        monetizationScore: monetization,
         totalScore: g.score,
         confidence: Math.min(3, channelCount),
         verification: channelCount >= 2 ? "VERIFIED" : "SUGGESTED",

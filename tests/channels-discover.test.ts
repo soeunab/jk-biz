@@ -10,6 +10,7 @@ let existing: { keyword: string; normalizedKeyword: string }[] = [];
 vi.mock("@/lib/db", () => ({
   db: {
     setting: { findUnique: async () => null },
+    affiliateProduct: { findMany: async () => [] },
     topic: {
       findMany: async () => existing,
       create: async ({ data }: { data: Record<string, unknown> }) => {

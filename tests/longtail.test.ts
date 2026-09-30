@@ -6,6 +6,7 @@ const c = (keyword: string, volume: number | null, score: number): LongtailCandi
   sources: ["naver-ac"],
   volume,
   compIdx: null,
+  adDepth: null,
   documentCount: null,
   competitionScore: null,
   score,

@@ -13,6 +13,7 @@ export function AiReviewCard({ postId, review, atLabel }: { postId: string; revi
   const run = useSubmit();
   const apply = useSubmit();
   const [sel, setSel] = useState<number[]>([]);
+  const [failedReasons, setFailedReasons] = useState<Record<number, string>>({});
   return (
     <div className="card">
       <div className="mb-2 flex items-center justify-between">
@@ -40,12 +41,23 @@ export function AiReviewCard({ postId, review, atLabel }: { postId: string; revi
                   <br />
                   <span className="text-gray-500">근거: {c.evidence}</span>
                   {done && <span className="ml-1 text-emerald-600">적용됨</span>}
+                  {failedReasons[i] && <span className="ml-1 text-amber-600">⚠️ 적용 안 됨 — {failedReasons[i]}</span>}
                 </span>
               </label>
             );
           })}
           {review.changes.length > 0 && (
-            <button className="btn-primary" disabled={apply.busy || !sel.length} onClick={async () => { await apply.submit(`/api/posts/${postId}/review`, { indices: sel }, "PATCH"); setSel([]); }}>
+            <button
+              className="btn-primary"
+              disabled={apply.busy || !sel.length}
+              onClick={async () => {
+                const data = await apply.submit(`/api/posts/${postId}/review`, { indices: sel }, "PATCH");
+                const failed = (data?.failed ?? []) as { index: number; reason: string }[];
+                setFailedReasons(Object.fromEntries(failed.map((f) => [f.index, f.reason])));
+                apply.setMsg(failed.length ? `${data.applied}건 적용, ${failed.length}건은 적용 안 됨(아래 ⚠️ 표시 확인)` : `${data?.applied ?? 0}건 모두 적용됨`);
+                setSel([]);
+              }}
+            >
               {apply.busy && <Spinner />}선택한 {sel.length}건 적용
             </button>
           )}

@@ -174,7 +174,28 @@ function jsonLd(m: Manuscript, o: RenderOptions, date: string) {
   return `<script type="application/ld+json">${json}</script>`;
 }
 
-export type NaverSegment = { type: "html"; html: string } | { type: "image"; localPath: string; src: string; caption: string };
+export type NaverSegment =
+  | { type: "html"; html: string }
+  | { type: "image"; localPath: string; src: string; caption: string; credit?: string }
+  | { type: "heading"; text: string };
+
+// 네이버는 폰트 크기·색을 인라인 style 그대로 두지 않고 자체 클래스(se-fs-fsNN)로 바꿔치기하는데,
+// span 에 명시적으로 안 넣으면 빈 값(se-fs-)이 되어 블로그 스킨 기본값에 따라 검정·회색이 뒤섞입니다.
+// 그래서 모든 문단에 크기·색을 명시적으로 넣어 통일합니다 — 본문 16px 검정, 소제목 24px, 캡션·고지문 13px 회색.
+const NAVER_BODY_STYLE = "font-size:16px;color:#000000;";
+const NAVER_HEADING_STYLE = "font-size:24px;color:#000000;";
+// 네이버 글자 크기는 프리셋(11/13/15/16/19/24/28/34/38)만 있어 18 대신 가장 가까운 19 사용
+const NAVER_SUBHEADING_STYLE = "font-size:19px;color:#000000;";
+const NAVER_MUTED_STYLE = "font-size:13px;color:#888888;";
+
+/** marked() 가 만든 <p>/<li> 안쪽에 본문 스타일을 입힘 (네이버는 span 의 인라인 style 만 크기·색으로 인식) */
+function naverBodyStyled(html: string): string {
+  return html
+    .replace(/<p>/g, `<p><span style="${NAVER_BODY_STYLE}">`)
+    .replace(/<\/p>/g, `</span></p>`)
+    .replace(/<li>/g, `<li><span style="${NAVER_BODY_STYLE}">`)
+    .replace(/<\/li>/g, `</span></li>`);
+}
 
 /**
  * 네이버 스마트에디터 ONE 용 세그먼트.
@@ -194,44 +215,60 @@ export function renderNaverSegments(m: Manuscript, o: RenderOptions): NaverSegme
     const im = o.images.find((i) => i.slot === slot);
     if (!im?.localPath) return;
     flush();
-    segs.push({ type: "image", localPath: im.localPath, src: im.src, caption: im.caption ?? im.alt });
+    segs.push({ type: "image", localPath: im.localPath, src: im.src, caption: im.caption ?? im.alt, credit: im.credit });
+  };
+  // 네이버 스마트에디터의 실제 "소제목" 서식(레벨 2)으로 넣을 제목 — HTML 붙여넣기는 <h2> 를 인식하지 못해 굵은 글씨로만 남기 때문에 따로 처리
+  const pushHeading = (text: string) => {
+    flush();
+    segs.push({ type: "heading", text });
   };
   const simpleMd = (s: string) =>
-    md(s)
-      .replace(/<blockquote>/g, "<blockquote><p>")
-      .replace(/<\/blockquote>/g, "</p></blockquote>");
+    naverBodyStyled(
+      md(s)
+        .replace(/<blockquote>/g, "<blockquote><p>")
+        .replace(/<\/blockquote>/g, "</p></blockquote>"),
+    );
+  /** 본문 스타일(16px 검정)을 입힌 굵은 글씨 한 줄 */
+  const bp = (inner: string) => `<p><span style="${NAVER_BODY_STYLE}"><b>${inner}</b></span></p>`;
+  /** 본문 스타일(16px 검정)을 입힌 일반 문단 */
+  const p = (inner: string) => `<p><span style="${NAVER_BODY_STYLE}">${inner}</span></p>`;
+  /** 캡션·고지문 스타일(13px 회색) */
+  const muted = (inner: string) => `<p><span style="${NAVER_MUTED_STYLE}">${inner}</span></p>`;
 
   if (m.affiliate.some((a) => products.has(a.productId))) {
-    buf.push(`<p><span style="color:#888888;">※ ${escapeHtml(o.brand.disclosure.affiliate)}</span></p>`);
+    buf.push(muted(`※ ${escapeHtml(o.brand.disclosure.affiliate)}`));
   }
   pushImage("thumbnail");
-  buf.push(`<p><b>${escapeHtml(m.directAnswer)}</b></p><p><br></p>`);
-  buf.push(`<p><b>📌 핵심 요약</b></p>${m.tldr.map((t) => `<p>✔ ${escapeHtml(t)}</p>`).join("")}<p><br></p>`);
-  if (o.riskDisclaimers?.length) buf.push(o.riskDisclaimers.map((d) => `<p><b>⚠️ ${escapeHtml(d)}</b></p>`).join(""));
+  buf.push(bp(escapeHtml(m.directAnswer)), `<p><br></p>`);
+  buf.push(bp("📌 핵심 요약"), m.tldr.map((t) => p(`✔ ${escapeHtml(t)}`)).join(""), `<p><br></p>`);
+  if (o.riskDisclaimers?.length) buf.push(o.riskDisclaimers.map((d) => bp(`⚠️ ${escapeHtml(d)}`)).join(""));
   buf.push(simpleMd(m.intro));
 
   m.sections.forEach((s, i) => {
-    const h = s.level === 3 ? 3 : 2;
-    buf.push(`<p><br></p><h${h}><b>${escapeHtml(s.heading)}</b></h${h}>`);
+    buf.push(`<p><br></p>`);
+    if (s.level === 3) buf.push(`<p><span style="${NAVER_SUBHEADING_STYLE}"><b>${escapeHtml(s.heading)}</b></span></p>`);
+    else pushHeading(s.heading);
     if (s.image) pushImage(s.image.slot);
     buf.push(simpleMd(s.body));
-    if (s.table) buf.push(tableHtml(s.table));
-    if (s.tip) buf.push(`<p>💡 <b>꿀팁</b> ${escapeHtml(s.tip)}</p>`);
+    // 표는 공통 tableHtml() 을 그대로 쓰되, 네이버는 표 안 글자 크기·색도 본문과 통일 (font-size 는 네이버가 셀 글자에 그대로 상속시킴)
+    if (s.table) buf.push(tableHtml(s.table).replace('font-size:15px;">', `font-size:16px;color:#000000;">`));
+    if (s.tip) buf.push(p(`💡 <b>꿀팁</b> ${escapeHtml(s.tip)}`));
     for (const a of m.affiliate.filter((a) => a.afterSection === i + 1)) {
       const prod = products.get(a.productId);
-      if (prod) buf.push(`<p>${escapeHtml(a.sentence)}</p><p><a href="${escapeHtml(prod.url)}">👉 ${escapeHtml(a.anchorText || prod.name)}</a></p>`);
+      if (prod) buf.push(p(escapeHtml(a.sentence)), p(`<a href="${escapeHtml(prod.url)}">👉 ${escapeHtml(a.anchorText || prod.name)}</a>`));
     }
   });
 
-  if (o.sourceLink && !manuscriptHasSourceToken(m)) buf.push(sourceLinkParagraph(o));
-  buf.push(`<p><br></p><h2><b>자주 묻는 질문</b></h2>`);
-  for (const f of m.faq) buf.push(`<p><b>Q. ${escapeHtml(f.q)}</b></p><p>A. ${escapeHtml(f.a)}</p><p><br></p>`);
-  buf.push(simpleMd(m.conclusion), `<p><b>${escapeHtml(m.cta)}</b></p>`);
+  if (o.sourceLink && !manuscriptHasSourceToken(m)) buf.push(naverBodyStyled(sourceLinkParagraph(o)));
+  buf.push(`<p><br></p>`);
+  pushHeading("자주 묻는 질문");
+  for (const f of m.faq) buf.push(bp(`Q. ${escapeHtml(f.q)}`), p(`A. ${escapeHtml(f.a)}`), `<p><br></p>`);
+  buf.push(simpleMd(m.conclusion), bp(escapeHtml(m.cta)));
   // 출처 링크는 네이버에서도 문제되지 않음 (같은 링크 반복 게재만 피하면 됨) — 신뢰도·GEO 를 위해 노출
   if (m.sources.length) {
-    buf.push(`<p><br></p><p><b>참고 자료</b></p>${m.sources.map((s) => `<p>· <a href="${escapeHtml(s.url)}">${escapeHtml(s.title)}</a></p>`).join("")}`);
+    buf.push(`<p><br></p>`, bp("참고 자료"), m.sources.map((s) => p(`· <a href="${escapeHtml(s.url)}">${escapeHtml(s.title)}</a>`)).join(""));
   }
-  buf.push(`<p><span style="color:#888888;">${escapeHtml(o.brand.disclosure.ai)}</span></p>`);
+  buf.push(muted(escapeHtml(o.brand.disclosure.ai)));
   flush();
   return segs;
 }
@@ -239,11 +276,11 @@ export function renderNaverSegments(m: Manuscript, o: RenderOptions): NaverSegme
 /** 대시보드 미리보기용 네이버 HTML (세그먼트를 이어 붙임) */
 export function renderNaverPreview(segs: NaverSegment[]): string {
   return segs
-    .map((s) =>
-      s.type === "html"
-        ? s.html
-        : `<figure style="margin:20px 0;text-align:center;"><img src="${escapeHtml(s.src)}" style="max-width:100%;border-radius:8px;" /><figcaption style="font-size:13px;color:#888;">${escapeHtml(s.caption)}</figcaption></figure>`,
-    )
+    .map((s) => {
+      if (s.type === "html") return s.html;
+      if (s.type === "heading") return `<h2>${escapeHtml(s.text)}</h2>`;
+      return `<figure style="margin:20px 0;text-align:center;"><img src="${escapeHtml(s.src)}" style="max-width:100%;border-radius:8px;" /><figcaption style="font-size:13px;color:#888;">${escapeHtml(s.caption)}</figcaption></figure>`;
+    })
     .join("\n");
 }
 

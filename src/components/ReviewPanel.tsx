@@ -81,7 +81,8 @@ export function ReviewPanel({ postId, report, checklist, reviewerNote, meta }: P
       <div className="card">
         <h3 className="mb-2 font-semibold">사람 검수 체크리스트</h3>
         <ul className="flex flex-col gap-2 text-sm">
-          {[...checklist, "사실·수치·요금이 최신 공식 정보와 일치", "[경험 추가] 자리를 실제 경험으로 채움", "제휴 링크·대가성 문구 확인"].map((c, i) => (
+          {/* "사실·수치·요금 일치"는 AI 사실 검수(웹 검색 기반, 위 카드)가 하는 일이라 여기서 사람에게 다시 확인시키지 않음 */}
+          {[...checklist, "[경험 추가] 자리를 실제 경험으로 채움", "제휴 링크·대가성 문구 확인"].map((c, i) => (
             <li key={i}>
               <label className="flex cursor-pointer items-start gap-2">
                 <input type="checkbox" className="mt-1" checked={!!done[i]} onChange={() => toggle(i)} />

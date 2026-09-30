@@ -117,6 +117,35 @@ describe("AI review suggestions", () => {
     expect(applyChange(m, { field: "faq.0.q", before: "없는 문장", after: "x" })).toBe(false);
     expect(applyChange(m, { field: "nope.1.x", before: "a", after: "b" })).toBe(false);
   });
+
+  it("applies changes inside non-string nested fields like a section's table", () => {
+    const m = mockManuscript({ ...base, platform: "BLOGGER" });
+    const section = m.sections[0];
+    section.table = { headers: ["구분", "한도"], rows: [["예금자보호", "예금자보호 5,000만원 분산"]] };
+    expect(
+      applyChange(m, { field: `sections.0.table`, before: "예금자보호 5,000만원 분산", after: "예금자보호 1억원 분산" }),
+    ).toBe(true);
+    expect(section.table.rows[0][1]).toBe("예금자보호 1억원 분산");
+    expect(applyChange(m, { field: "sections.0.table", before: "없는 문구", after: "x" })).toBe(false);
+  });
+
+  it("applies a change whose before-text spans multiple table rows (JSON-fragment style)", () => {
+    // 검수 모델이 원고 JSON을 보고 제안하다 보니, 표 행 여러 개를 이어붙인 조각을 before 로 주는 경우가 있음
+    // (실사례: sections.N.table.rows 를 대상으로 한 제안이 낱개 셀 문자열 매칭으로는 안 잡혀 실패했던 버그)
+    const m = mockManuscript({ ...base, platform: "BLOGGER" });
+    const section = m.sections[0];
+    section.table = {
+      headers: ["구분", "금리"],
+      rows: [
+        ["가계대출 전체", "확인 필요"],
+        ["신용대출", "연 6.33%"],
+      ],
+    };
+    const before = JSON.stringify(section.table.rows).slice(1, -1); // 바깥 대괄호만 뺀 조각
+    const after = before.replace("확인 필요", "연 4.76%");
+    expect(applyChange(m, { field: "sections.0.table.rows", before, after })).toBe(true);
+    expect(section.table.rows[0][1]).toBe("연 4.76%");
+  });
 });
 
 describe("naver sources", () => {

@@ -92,7 +92,6 @@ export async function templateImage(label: string, sub = "", width = 1200, heigh
 export async function thumbnailImage(opts: {
   headline: string;
   sub: string;
-  brand: string;
   background?: Buffer | null;
   width?: number;
   height?: number;
@@ -109,7 +108,6 @@ export async function thumbnailImage(opts: {
   .t{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;color:#fff;padding:0 70px;}
   .h{font-size:${Math.round(width / 12)}px;font-weight:900;line-height:1.15;letter-spacing:-2px;word-break:keep-all;text-shadow:0 4px 18px rgba(0,0,0,.35);}
   .s{display:inline-block;margin-top:24px;font-size:${Math.round(width / 32)}px;font-weight:700;background:#facc15;color:#111;padding:8px 22px;border-radius:999px;}
-  .b{position:absolute;bottom:26px;right:34px;color:#fff;font-weight:800;font-size:${Math.round(width / 45)}px;opacity:.95;}
-  </style></head><body><div class="c"><div class="o"></div><div class="t"><div class="h">${escapeHtml(opts.headline)}</div><div class="s">${escapeHtml(opts.sub)}</div></div><div class="b">${escapeHtml(opts.brand)}</div></div></body></html>`;
+  </style></head><body><div class="c"><div class="o"></div><div class="t"><div class="h">${escapeHtml(opts.headline)}</div><div class="s">${escapeHtml(opts.sub)}</div></div></div></body></html>`;
   return { buf: await renderHtmlToPng(html, width, height), ext: "png", width, height };
 }

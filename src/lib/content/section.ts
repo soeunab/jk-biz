@@ -4,6 +4,7 @@ import { getBrand, accountBrand } from "../brand";
 import { generateJson } from "../llm";
 import type { JobContext } from "../jobs/queue";
 import { buildSystemPrompt } from "./prompts";
+import { recipeFor } from "./recipes";
 import { readManuscript, rerenderPost } from "./service";
 import { SectionSchema, type Platform } from "./types";
 
@@ -12,12 +13,13 @@ import { SectionSchema, type Platform } from "./types";
  * 검수자가 지정한 섹션만 같은 규칙으로 다시 씁니다. 소제목(검색 데이터 기반)은 유지합니다.
  */
 export async function rewriteSection(postId: string, index: number, instruction: string, ctx?: JobContext) {
-  const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { account: true } });
+  const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { account: true, topic: true } });
   const m = readManuscript(post.content);
   if (!m || !m.sections[index]) throw new Error("섹션을 찾을 수 없습니다.");
   const brand = accountBrand(await getBrand(), post.account);
   const target = m.sections[index];
   const outline = m.sections.map((s, i) => `${i === index ? "▶ " : ""}${i + 1}. ${s.heading}`).join("\n");
+  const isReview = recipeFor(post.topic?.intent, post.topic?.keyword ?? m.focusKeyword) === "REVIEW";
 
   const section = await generateJson({
     name: "section",
@@ -27,8 +29,7 @@ export async function rewriteSection(postId: string, index: number, instruction:
     prompt: `아래 원고의 ${index + 1}번 섹션만 다시 써 주세요.
 - 소제목(heading)은 그대로 유지하세요: "${target.heading}"
 - 앞뒤 섹션과 내용이 겹치지 않게, 이 섹션의 역할에 집중하세요.
-- 경험이 필요한 곳은 "[경험 추가: …]" 자리표시로 남기세요.
-${instruction ? `- 검수자 요청: ${instruction}` : ""}
+${isReview ? `- 경험이 필요한 곳은 "[경험 추가: …]" 자리표시로 남기세요.\n` : ""}${instruction ? `- 검수자 요청: ${instruction}` : ""}
 
 [원고 제목] ${m.title}
 [핵심 키워드] ${m.focusKeyword}
@@ -42,7 +43,7 @@ ${target.body}`,
     maxTokens: 8000,
     mock: () => ({
       ...target,
-      body: `${target.body}\n\n${instruction ? `(요청 반영: ${instruction}) ` : ""}[경험 추가: 이 단계를 직접 해보며 느낀 점]`,
+      body: `${target.body}\n\n${instruction ? `(요청 반영: ${instruction}) ` : ""}${isReview ? "[경험 추가: 이 단계를 직접 해보며 느낀 점]" : ""}`,
     }),
   });
 

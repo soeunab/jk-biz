@@ -36,7 +36,7 @@ function ChannelEvidence({ s }: { s: ChannelTopicSignals }) {
         ))}
       </ul>
       <details>
-        <summary className="cursor-pointer text-gray-500">수집 근거 {s.evidence.length}건</summary>
+        <summary className="cursor-pointer text-gray-500">채널 수집 근거 {s.evidence.length}건</summary>
         <ul className="mt-1 flex flex-col gap-0.5 text-gray-600">
           {s.evidence.map((e, i) => (
             <li key={i}>
@@ -165,30 +165,16 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
                     </div>
                     {t.angle && <div className="mt-1 text-xs text-gray-600">관점: {t.angle}</div>}
                     {!ch && t.rationale && <div className="mt-1 text-xs text-gray-600">📊 {t.rationale}</div>}
-                    {ch && t.searchVolume != null && (
-                      <div className="mt-1 text-xs text-gray-600">
-                        🔎 롱테일 네이버 월 검색 {formatNumber(t.searchVolume)}
-                        {t.documentCount != null ? ` · 문서 ${formatNumber(t.documentCount)}` : ""}
-                        {t.competitionScore != null ? ` · 경쟁점수 ${Math.round(t.competitionScore)}` : ""}
-                      </div>
-                    )}
+                    {ch && <div className="mt-2"><ChannelEvidence s={ch} /></div>}
                   </td>
-                  {ch ? (
-                    <td colSpan={4} className="max-w-lg">
-                      <ChannelEvidence s={ch} />
-                    </td>
-                  ) : (
-                    <>
-                      <td className="whitespace-nowrap text-xs tabular-nums">
-                        <span className="whitespace-nowrap">월 {t.searchVolume != null ? formatNumber(t.searchVolume) : <span className="text-gray-400">미확인</span>}</span>
-                        <br />
-                        <span className="whitespace-nowrap">문서 {t.documentCount != null ? formatNumber(t.documentCount) : <span className="text-gray-400">미확인</span>}</span>
-                      </td>
-                      <td><ScoreBar value={t.competitionScore} /></td>
-                      <td><ScoreBar value={t.monetizationScore} /></td>
-                      <td><ScoreBar value={t.trendScore} /></td>
-                    </>
-                  )}
+                  <td className="whitespace-nowrap text-xs tabular-nums">
+                    <span className="whitespace-nowrap">월 {t.searchVolume != null ? formatNumber(t.searchVolume) : <span className="text-gray-400">미확인</span>}</span>
+                    <br />
+                    <span className="whitespace-nowrap">문서 {t.documentCount != null ? formatNumber(t.documentCount) : <span className="text-gray-400">미확인</span>}</span>
+                  </td>
+                  <td><ScoreBar value={t.competitionScore} /></td>
+                  <td><ScoreBar value={t.monetizationScore} /></td>
+                  <td><ScoreBar value={t.trendScore} /></td>
                   <td><Badge map={PLATFORM} value={t.targetPlatform} /></td>
                   <td className="min-w-48">
                     <div className="flex flex-col items-start gap-2">
@@ -216,7 +202,7 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
         <br />
         검색량·경쟁·트렌드는 모두 네이버 검색광고·데이터랩 데이터입니다. 블로거(구글) 대상으로 분류된 주제도 구글 자체 검색량 데이터는 없고, 이 네이버 데이터에 다른 가중치를 적용해 추정한 것입니다.
         <br />
-        📡 실시간 트렌드 점수(0~100)는 참여 채널 수·기사 신선도·네이버 랭킹·조회수·구글 트렌드 급등률 등 <b>수집한 값만</b>으로 계산한 화제성 지표이며, 수익 예측이 아닙니다. 소재의 대표어를 롱테일로 확장해 네이버에 검색량이 잡힌 문구가 있으면 그 수치를 붙이고, 막 터진 이슈라 아직 데이터가 없으면 미확인으로 둡니다.
+        📡 실시간 트렌드의 <b>우선순위 번호</b>는 참여 채널 수·기사 신선도·네이버 랭킹·조회수·구글 트렌드 급등률 등 <b>수집한 값만</b>으로 계산한 화제성 지표(0~100)이며, 검색량·경쟁·수익성·트렌드 열과는 다른 계산입니다. 검색량·경쟁·수익성·트렌드 열은 소재의 대표어를 롱테일로 확장해 네이버에 검색량이 잡힌 문구가 있으면 그 문구 기준 실제 수치이고, 막 터진 이슈라 아직 데이터가 없으면 미확인입니다.
         <br />
         🎯 세 가지 방식 모두 &quot;ai·클로드&quot;처럼 문서가 과포화된 짧은 헤드 키워드 대신, 자동완성·&quot;함께 많이 찾는&quot;에서 모은 실제 검색 문구 중 검색량이 확인된 <b>롱테일</b>을 제목 맨 앞 키워드로 쓰고, 함께 검색되는 문구는 원고 소제목·FAQ에 반영합니다.
         <br />

@@ -16,7 +16,10 @@ export default async function Home() {
     revenueBySource(30),
     statusCounts(),
     db.post.findMany({ where: { status: { in: ["PRIVATE", "APPROVED", "DRAFT"] } }, include: { account: true }, orderBy: { updatedAt: "desc" }, take: 6 }),
-    db.topic.findMany({ where: { status: "NEW", verification: { not: "UNVERIFIED" } }, orderBy: [{ confidence: "desc" }, { totalScore: "desc" }], take: 5 }),
+    // totalScore 가 우선순위 정렬용 지표(scoring.ts)라 이걸 1순위로 정렬하고, confidence(확인된 지표 개수)는
+    // 점수가 같을 때만 2순위로 씀 — confidence 를 1순위로 두면 "확인된 지표가 많다"는 이유만으로
+    // 점수가 나쁜 주제가 점수 좋은 주제보다 위로 올라가는 문제가 있었음
+    db.topic.findMany({ where: { status: "NEW", verification: { not: "UNVERIFIED" } }, orderBy: [{ totalScore: "desc" }, { confidence: "desc" }], take: 5 }),
     db.insight.findMany({ where: { status: "OPEN" }, orderBy: [{ priority: "asc" }, { createdAt: "desc" }], take: 5 }),
   ]);
   const [writeP, lightP, manualPending] = await Promise.all([routeFor("write"), routeFor("light"), db.manualRequest.count({ where: { status: "PENDING" } })]);

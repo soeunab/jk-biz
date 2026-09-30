@@ -64,7 +64,9 @@ describe("manuscript", () => {
     });
     expect(segs[0]).toMatchObject({ type: "image", localPath: "/tmp/t.png" });
     expect(segs.filter((s) => s.type === "image")).toHaveLength(2);
-    expect(segs.some((s) => s.type === "html" && s.html.includes("자주 묻는 질문"))).toBe(true);
+    // 소제목은 네이버 실제 "소제목" 서식으로 넣도록 별도 세그먼트로 분리됨 (HTML <h2> 붙여넣기는 인식 안 됨)
+    expect(segs.some((s) => s.type === "heading" && s.text === "자주 묻는 질문")).toBe(true);
+    expect(m.sections.every((sec) => segs.some((s) => s.type === "heading" && s.text === sec.heading))).toBe(true);
   });
 
   it("similarity detects near-duplicates across platforms", () => {

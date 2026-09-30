@@ -4,7 +4,7 @@ import { fail, handle, ok } from "@/lib/api";
 import { createPostsFromTopic, createRepublish, generationWarnings } from "@/lib/content/service";
 import { normalizeKeyword, scoreKeyword } from "@/lib/topics/scoring";
 import { guessTool } from "@/lib/topics/discover";
-import { ensureKeywordInTitle, expandKeyword, isHeadKeyword, relatedOf } from "@/lib/topics/longtail";
+import { ensureKeywordInTitle, expandKeyword, isHeadKeyword, momentumOf, relatedOf } from "@/lib/topics/longtail";
 import { asObject } from "@/lib/util";
 
 /** 주제 발굴 없이 키워드를 직접 입력해 원고 만들기 */
@@ -40,8 +40,9 @@ export const POST = handle(async (req: Request) => {
   const focus = switched?.keyword ?? input;
   const metric = switched ?? inputMetric;
   const norm = normalizeKeyword(focus);
+  const momentum = metric?.volume != null ? await momentumOf(focus) : null;
   const s = scoreKeyword(
-    { keyword: focus, monthlySearch: metric?.volume ?? null, documentCount: metric?.documentCount ?? null, compIdx: metric?.compIdx ?? null, sources: ["manual", ...(metric?.sources ?? [])] },
+    { keyword: focus, monthlySearch: metric?.volume ?? null, documentCount: metric?.documentCount ?? null, compIdx: metric?.compIdx ?? null, adDepth: metric?.adDepth ?? null, momentum, sources: ["manual", ...(metric?.sources ?? [])] },
     [],
     true,
   );
@@ -71,6 +72,7 @@ export const POST = handle(async (req: Request) => {
         searchVolume: metric?.volume ?? null,
         documentCount: metric?.documentCount ?? null,
         competitionScore: s.competitionScore,
+        trendScore: s.trendScore,
         totalScore: s.total,
         monetizationScore: s.monetizationScore,
         confidence: s.confidence,

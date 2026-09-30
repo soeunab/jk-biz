@@ -28,6 +28,85 @@ export const ReviewSchema = z.object({
 });
 export type AiReview = z.infer<typeof ReviewSchema> & { at: string; applied: number[] };
 
+/** 1차 검수에서 "확인 필요"로 남은 항목 하나하나를 실제로 웹 검색해 확인 가능한지 다시 시도한 결과 */
+const ConcernResolutionSchema = z.object({
+  resolutions: z.array(
+    z.object({
+      concernIndex: z.number().int().describe("원래 concerns 배열의 인덱스(0부터)"),
+      resolved: z.boolean().describe("이번 조사로 사실 여부를 확인했으면 true (원문이 맞았어도 true), 여전히 확인 못했으면 false"),
+      field: z.string().optional().describe("고쳐야 하면 경로(sections.N.body 등), 원문이 이미 맞으면 비움"),
+      before: z.string().optional(),
+      after: z.string().optional(),
+      note: z.string().describe("확인됐으면 근거·출처, 확인 못했으면 왜 못했는지(예: 게재 시점 실시간 계산 필요, 원문 자료 비공개 등)"),
+    }),
+  ),
+});
+
+/**
+ * 1차 검수의 concerns 를 그대로 사람에게 넘기지 않고, 그 각각을 실제로 웹 검색해서 한 번 더 확인을 시도합니다.
+ * ("사람이 확인하라"는 게 "AI가 검색하면 알 수 있는 걸 사람 손으로 다시 찾으라"는 뜻이 되지 않게 하기 위함.)
+ * 확인되면 changes 로 옮기거나(원문이 틀렸을 때) 목록에서 빼고(원문이 이미 맞았을 때), 정말 확인 불가한 것만 남깁니다.
+ * concerns 는 AI 사실 검수 자신이 남긴 것과, 원고 작성 때 글쓴이 AI 가 남긴 reviewChecklist 를 합쳐서 넘길 수 있습니다 —
+ * 같은 사실을 "AI 검수는 못 찾음", "사람 검수 체크리스트엔 확인하라고 남아 있음" 두 군데 중복으로 남기지 않기 위함.
+ * 반환하는 remaining 은 입력과 같은 길이·순서라 호출한 쪽에서 원래 배열(이었던 구간)별로 다시 나눠 쓸 수 있습니다.
+ */
+async function resolveConcerns(
+  m: Manuscript,
+  platformName: string,
+  concerns: string[],
+  ctx?: JobContext,
+): Promise<{ changes: z.infer<typeof ReviewSchema>["changes"]; remaining: (string | null)[] }> {
+  if (!concerns.length) return { changes: [], remaining: [] };
+  await ctx?.log(`확인 필요 ${concerns.length}건 추가 조사 중…`);
+  const followUp = await research(
+    `아래는 블로그 원고를 검수하다가 확인이 안 된 항목들입니다. 각 항목이 사실인지 공식 자료·언론 보도로 하나씩 확인해 주세요. ` +
+      `확인되면 정확한 수치·문구와 출처를, 확인이 안 되면 왜 안 되는지 알려주세요.\n` +
+      concerns.map((c, i) => `${i + 1}. ${c}`).join("\n"),
+  ).catch(() => ({ notes: "", sources: [] }));
+  if (!followUp.notes) return { changes: [], remaining: concerns };
+
+  const result = await generateJson({
+    name: "factReviewFollowup",
+    task: "write",
+    title: `AI 사실 검수 후속 확인: ${m.title}`,
+    system: `당신은 ${platformName} 원고의 사실 검수자입니다. 아래 "확인 필요" 목록 각각에 대해 방금 조사한 자료로 사실 여부를 판단하세요.
+- 조사 결과 원문이 틀렸으면 field(sections.N.body 등)·before(원문 그대로)·after 를 채우고 resolved=true.
+- 조사 결과 원문이 이미 맞았으면 field 는 비우고 resolved=true, note 에 확인 근거만 적으세요.
+- 이번 조사로도 확인 못했으면 resolved=false, note 에 왜 못했는지 적으세요(예: 게재 시점 실시간 수치라 지금은 계산 불가).
+concerns 배열의 모든 항목에 대해 하나씩 답하세요.`,
+    prompt: `[확인 필요 목록]\n${concerns.map((c, i) => `${i}: ${c}`).join("\n")}\n\n[방금 조사한 내용]\n${followUp.notes}\n[출처]\n${followUp.sources.map((s) => `- ${s.title}: ${s.url}`).join("\n") || "(없음)"}\n\n[원고 JSON]\n${JSON.stringify(m)}`,
+    schema: ConcernResolutionSchema,
+    effort: "medium",
+    maxTokens: 8000,
+    mock: () => ({
+      resolutions: concerns.map((_, i) => ({
+        concernIndex: i,
+        resolved: false,
+        field: undefined as string | undefined,
+        before: undefined as string | undefined,
+        after: undefined as string | undefined,
+        note: "데모 모드 — 추가 조사 없음",
+      })),
+    }),
+  });
+
+  const changes: z.infer<typeof ReviewSchema>["changes"] = [];
+  // 입력과 같은 길이·순서 유지 — null 이면 해결(수정했거나 이미 맞았음 확인), 문자열이면 아직 확인 필요
+  const remaining: (string | null)[] = concerns.map((c) => c); // 모델이 빠뜨린 항목은 원래 문구 그대로(안전 기본값)
+  for (const r of result.resolutions) {
+    if (r.concernIndex < 0 || r.concernIndex >= concerns.length) continue;
+    if (r.resolved && r.field && r.before && r.after) {
+      changes.push({ field: r.field, before: r.before, after: r.after, reason: "사실오류", evidence: r.note });
+      remaining[r.concernIndex] = null;
+    } else if (r.resolved) {
+      remaining[r.concernIndex] = null; // 원문이 이미 맞았던 것 확인 — 목록에서 제거
+    } else {
+      remaining[r.concernIndex] = `${concerns[r.concernIndex]} (추가 조사: ${r.note})`;
+    }
+  }
+  return { changes, remaining };
+}
+
 export async function runAiReview(postId: string, ctx?: JobContext) {
   const post = await db.post.findUniqueOrThrow({ where: { id: postId } });
   const m = readManuscript(post.content);
@@ -64,10 +143,27 @@ export async function runAiReview(postId: string, ctx?: JobContext) {
     }),
   });
 
-  const review: AiReview = { ...result, at: new Date().toISOString(), applied: [] };
-  await db.post.update({ where: { id: postId }, data: { aiReview: review as unknown as Prisma.InputJsonValue } });
-  await ctx?.progress(100, `제안 ${result.changes.length}건 · 확인 필요 ${result.concerns.length}건`);
-  return { changes: result.changes.length };
+  await ctx?.progress(80, `1차 검수 완료 — 제안 ${result.changes.length}건 · 확인 필요 ${result.concerns.length}건`);
+
+  // "사람이 확인하세요"로 넘기기 전에, 그 항목들도 실제로 한 번 더 검색해서 확인 가능한 만큼은 AI 가 직접 해결합니다.
+  // 원고 작성 때 글쓴이 AI 가 남긴 reviewChecklist(사람 검수 체크리스트)도 같이 넘겨서, 같은 사실을
+  // "AI 검수 확인 필요"와 "사람 검수 체크리스트" 두 곳에 중복으로 남기지 않게 합니다.
+  const pool = [...result.concerns, ...m.reviewChecklist];
+  const resolved = await resolveConcerns(m, platformName, pool, ctx);
+  const concerns = resolved.remaining.slice(0, result.concerns.length).filter((c): c is string => c != null);
+  const reviewChecklist = resolved.remaining.slice(result.concerns.length).filter((c): c is string => c != null);
+  const finalReview = { ...result, changes: [...result.changes, ...resolved.changes], concerns };
+
+  const review: AiReview = { ...finalReview, at: new Date().toISOString(), applied: [] };
+  await db.post.update({
+    where: { id: postId },
+    data: {
+      aiReview: review as unknown as Prisma.InputJsonValue,
+      ...(reviewChecklist.length !== m.reviewChecklist.length ? { content: { ...m, reviewChecklist } as unknown as Prisma.InputJsonValue } : {}),
+    },
+  });
+  await ctx?.progress(100, `제안 ${finalReview.changes.length}건 · 확인 필요 ${finalReview.concerns.length}건`);
+  return { changes: finalReview.changes.length };
 }
 
 function mockTypoChanges(m: Manuscript) {
@@ -75,8 +171,39 @@ function mockTypoChanges(m: Manuscript) {
   return hit ? [{ field: hit === m.intro ? "intro" : "conclusion", before: "  ", after: " ", reason: "오탈자" as const, evidence: "공백 중복" }] : [];
 }
 
-/** 경로("sections.2.body")의 문자열 값에서 before → after 치환 */
+/** 객체·배열 안의 문자열 값들을 재귀적으로 뒤져 before → after 치환 (표의 headers/rows 처럼 field 가 문자열이 아닌 중첩 구조를 가리킬 때 사용) */
+function replaceNested(node: unknown, before: string, after: string): boolean {
+  if (Array.isArray(node)) {
+    let changed = false;
+    for (let i = 0; i < node.length; i++) {
+      if (typeof node[i] === "string" && node[i].includes(before)) {
+        node[i] = node[i].replace(before, after);
+        changed = true;
+      } else if (node[i] != null && typeof node[i] === "object") {
+        changed = replaceNested(node[i], before, after) || changed;
+      }
+    }
+    return changed;
+  }
+  if (node != null && typeof node === "object") {
+    let changed = false;
+    for (const key of Object.keys(node as Record<string, unknown>)) {
+      const v = (node as Record<string, unknown>)[key];
+      if (typeof v === "string" && v.includes(before)) {
+        (node as Record<string, unknown>)[key] = v.replace(before, after);
+        changed = true;
+      } else if (v != null && typeof v === "object") {
+        changed = replaceNested(v, before, after) || changed;
+      }
+    }
+    return changed;
+  }
+  return false;
+}
+
+/** 경로("sections.2.body" 또는 "sections.6.table" 처럼 표 등 중첩 구조도 가리킬 수 있음)의 값에서 before → after 치환 */
 export function applyChange(m: Manuscript, change: { field: string; before: string; after: string }): boolean {
+  if (!change.before) return false;
   const parts = change.field.split(".");
   let target: unknown = m;
   for (const key of parts.slice(0, -1)) {
@@ -87,9 +214,39 @@ export function applyChange(m: Manuscript, change: { field: string; before: stri
   if (target == null || typeof target !== "object") return false;
   const obj = target as Record<string, unknown>;
   const value = obj[last];
-  if (typeof value !== "string" || !change.before || !value.includes(change.before)) return false;
-  obj[last] = value.replace(change.before, change.after);
-  return true;
+  if (typeof value === "string") {
+    if (!value.includes(change.before)) return false;
+    obj[last] = value.replace(change.before, change.after);
+    return true;
+  }
+  if (replaceNested(value, change.before, change.after)) return true;
+  // 검수 모델이 원고 JSON 을 보고 제안하다 보니, 표(rows)처럼 셀 여러 개에 걸친 조각을
+  // before 로 줄 때가 있음(예: 행 두 개를 이어붙인 텍스트) — 낱개 문자열 안에서는 못 찾으므로
+  // 그 필드 전체를 JSON 문자열로 펼쳐 놓고 찾아본 뒤 다시 구조로 되돌립니다.
+  if (value != null && typeof value === "object") {
+    const json = JSON.stringify(value);
+    if (json.includes(change.before)) {
+      try {
+        const patched = JSON.parse(json.split(change.before).join(change.after));
+        obj[last] = patched;
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
+/** 필드 경로의 현재 문자열 값(중첩 구조는 JSON 문자열로) — 실패 원인 판단용 */
+function currentTextAt(m: Manuscript, field: string): string | null {
+  const parts = field.split(".");
+  let target: unknown = m;
+  for (const key of parts) {
+    if (target == null || typeof target !== "object") return null;
+    target = (target as Record<string, unknown>)[key];
+  }
+  return typeof target === "string" ? target : target != null ? JSON.stringify(target) : null;
 }
 
 /** 사람이 고른 제안만 적용 */
@@ -99,11 +256,22 @@ export async function applyAiReview(postId: string, indices: number[]) {
   const review = post.aiReview as AiReview | null;
   if (!m || !review) throw new Error("검수 결과가 없습니다.");
   const applied: number[] = [];
-  const failed: number[] = [];
+  const failed: { index: number; reason: string }[] = [];
   for (const i of indices) {
     const c = review.changes[i];
     if (!c || review.applied.includes(i)) continue;
-    (applyChange(m, c) ? applied : failed).push(i);
+    if (applyChange(m, c)) {
+      applied.push(i);
+      continue;
+    }
+    // 실패 이유를 구분: 같은 문단을 겹쳐서 고치는 다른 제안이 먼저 적용돼 문구가 이미 바뀐 경우(정상적인
+    // 상황)와, 원고 자체가 그 사이에 편집돼 문구를 아예 못 찾는 경우(진짜 실패)를 다르게 안내합니다.
+    const cur = currentTextAt(m, c.field);
+    const reason =
+      cur != null && cur.includes(c.after)
+        ? "다른 제안이 먼저 적용되며 이미 반영됨(겹치는 수정)"
+        : "원문에서 해당 문구를 찾지 못함 — 원고가 그 사이 바뀌었을 수 있음";
+    failed.push({ index: i, reason });
   }
   const next = ManuscriptSchema.parse(m);
   await db.post.update({
@@ -116,5 +284,5 @@ export async function applyAiReview(postId: string, indices: number[]) {
     },
   });
   await rerenderPost(postId);
-  return { applied: applied.length, failed: failed.length };
+  return { applied: applied.length, failed };
 }

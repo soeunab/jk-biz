@@ -22,6 +22,18 @@ export const SELECTORS = {
   body: [".se-component.se-text .se-text-paragraph", ".se-section-text .se-text-paragraph"],
   imageButton: ["button.se-image-toolbar-button", "button[data-name='image']"],
   uploadedImage: [".se-component.se-image"],
+  /** 사진 선택 시 나오는 네이버 자체 "사진 설명을 입력하세요" 칸 — 본문과 별개로 사진에 붙는 캡션 */
+  imageCaption: [".se-caption"],
+  /** 문단 서식(본문/소제목/인용구) 드롭다운 버튼 — 소제목으로 바꿀 문단을 선택한 뒤 클릭 */
+  formatDropdown: ["button.se-text-format-toolbar-button"],
+  formatSectionTitle: ["button.se-toolbar-option-text-format-sectionTitle-button", "button[class*='format-sectionTitle']"],
+  formatBody: ["button.se-toolbar-option-text-format-text-button", "button[class*='format-text-button']"],
+  /** 글자 크기 드롭다운 — 프리셋(11/13/15/16/19/24/28/34/38)만 있고 임의 숫자는 못 씀 */
+  fontSizeDropdown: ["button.se-font-size-code-toolbar-button"],
+  fontSize24: ["button.se-toolbar-option-font-size-code-fs24-button", "button[class*='font-size-code-fs24']"],
+  /** 사진 선택 시 나오는 "AI 활용 설정" 토글 (AI로 만든 이미지임을 표시) */
+  aiMarkToggle: ["button.se-set-ai-mark-button-toggle"],
+  sidebarClose: [".se-sidebar-close-button"],
   publishOpen: ["button[class*='publish_btn']", "button:has-text('발행')"],
   tagInput: ["input[class*='tag_input']", "#tag-input"],
   privateRadio: ["label[for='open_private']", "input#open_private"],
@@ -55,16 +67,30 @@ async function tryClick(frame: Frame | Page, selectors: string[], timeout = 1500
   }
 }
 
-/** 스마트에디터에 HTML 을 붙여넣기 이벤트로 주입 (에디터가 자체 컴포넌트로 변환) */
-async function pasteHtml(frame: Frame, html: string) {
-  await frame.evaluate((h) => {
-    const target = (document.activeElement as HTMLElement) ?? document.body;
-    const dt = new DataTransfer();
-    dt.setData("text/html", h);
-    dt.setData("text/plain", h.replace(/<[^>]+>/g, ""));
-    target.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+/**
+ * 스마트에디터에 HTML 을 붙여넣습니다. 예전에는 합성 ClipboardEvent 를 직접 dispatch 했는데,
+ * 에디터가 실제 브라우저 클립보드에서 온 진짜(trusted) paste 이벤트만 처리하도록 바뀌어 조용히 무시되는
+ * 문제가 있었습니다(작업 로그는 성공으로 남지만 실제로는 본문이 비어 사진만 들어감).
+ * 그래서 실제 클립보드에 써넣고 Ctrl/Cmd+V 로 진짜 붙여넣기를 일으킵니다.
+ */
+async function pasteHtml(page: Page, html: string) {
+  await page.evaluate(async (h) => {
+    const item = new ClipboardItem({
+      "text/html": new Blob([h], { type: "text/html" }),
+      "text/plain": new Blob([h.replace(/<[^>]+>/g, "")], { type: "text/plain" }),
+    });
+    await navigator.clipboard.write([item]);
   }, html);
-  await frame.page().waitForTimeout(700);
+  await page.keyboard.press("ControlOrMeta+KeyV");
+  await page.waitForTimeout(700);
+}
+
+/** 현재 커서가 있는(또는 선택한) 문단의 서식을 "본문/소제목/인용구" 드롭다운에서 바꿉니다 */
+async function setParagraphFormat(frame: Frame, page: Page, optionSelectors: string[]) {
+  await (await first(frame, SELECTORS.formatDropdown)).click();
+  await page.waitForTimeout(300);
+  await (await first(frame, optionSelectors)).click();
+  await page.waitForTimeout(300);
 }
 
 export async function openEditor(accountId: string, url: string) {
@@ -105,16 +131,36 @@ export async function naverPublishPrivate(postId: string, log: (m: string) => un
   const rendered = await rerenderPost(postId, { forPublish: true });
   const segments = renderNaverSegments(rendered.manuscript, rendered.renderOptions);
 
-  const { browser, page, frame } = await openEditor(account.id, `https://blog.naver.com/PostWriteForm.naver?blogId=${account.externalId}`);
+  const { browser, context, page, frame } = await openEditor(account.id, `https://blog.naver.com/PostWriteForm.naver?blogId=${account.externalId}`);
   try {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "https://blog.naver.com" });
     await (await first(frame, SELECTORS.title, 15_000)).click();
     await page.keyboard.type(rendered.manuscript.title, { delay: 15 });
     await log("제목 입력 완료");
 
     await (await first(frame, SELECTORS.body)).click();
     for (const [i, seg] of segments.entries()) {
-      if (seg.type === "html") {
-        await pasteHtml(frame, seg.html);
+      if (seg.type === "heading") {
+        // HTML <h2> 붙여넣기는 에디터가 굵은 글씨로만 남기고 실제 "소제목" 컴포넌트로 인식 못 함 —
+        // (먼저 글자를 넣고 나중에 "소제목"으로 바꾸면 안의 글자가 통째로 사라지는 버그가 있어서)
+        // 지금 있는 빈 문단을 먼저 "소제목" 서식으로 바꾼 뒤 그 안에 글자를 입력합니다.
+        await setParagraphFormat(frame, page, SELECTORS.formatSectionTitle);
+        await page.keyboard.type(seg.text, { delay: 10 });
+        // 글자 크기가 프리셋 기본값이라 본문과 통일된 24 로 다시 지정 (방금 입력한 글자를 선택)
+        await page.keyboard.press("Shift+Home");
+        await (await first(frame, SELECTORS.fontSizeDropdown)).click();
+        await page.waitForTimeout(300);
+        await (await first(frame, SELECTORS.fontSize24)).click();
+        // 글자 크기 적용 직후 바로 Enter 를 누르면 에디터 내부 상태 동기화(디바운스)가 끝나기 전이라
+        // 방금 입력한 글자가 통째로 사라지는 경쟁 상태 버그가 있어서(실측: 200ms 는 실패, 1200ms 는 성공)
+        // 넉넉히 기다린 뒤에 문단을 넘깁니다.
+        await page.waitForTimeout(1200);
+        await page.keyboard.press("End");
+        await page.keyboard.press("Enter");
+        // 다음 문단이 소제목 서식을 이어받지 않도록 본문으로 되돌림
+        await setParagraphFormat(frame, page, SELECTORS.formatBody);
+      } else if (seg.type === "html") {
+        await pasteHtml(page, seg.html);
       } else {
         const before = await frame.locator(SELECTORS.uploadedImage[0]).count();
         const chooser = page.waitForEvent("filechooser", { timeout: 10_000 });
@@ -126,8 +172,31 @@ export async function naverPublishPrivate(postId: string, log: (m: string) => un
           { timeout: 30_000 },
         );
         await page.waitForTimeout(800);
-        // 이미지 아래 새 문단으로 커서 이동
-        await page.keyboard.press("ArrowDown").catch(() => undefined);
+        // 문서에 이미지가 여러 장이면 AI 활용 설정·사진 설명 칸도 장마다 하나씩 존재합니다.
+        // 페이지 전체에서 첫 번째 것만 찾으면 항상 첫 사진 것을 건드리게 되므로, 방금 올린(마지막) 이미지 범위 안에서만 찾습니다.
+        const lastImage = frame.locator(SELECTORS.uploadedImage[0]).last();
+        // 사진을 선택해야(속성 툴바가 뜬 상태에서만) AI 활용 설정 버튼과 사진 설명 칸이 나타남
+        await lastImage.locator(".se-image-resource").click({ timeout: 3000 }).catch(() => undefined);
+        await page.waitForTimeout(300);
+        if (seg.credit === "AI 생성 이미지") {
+          await tryClick(frame, SELECTORS.sidebarClose); // 라이브러리 패널이 열려 있으면 버튼을 가려서 먼저 닫음
+          await lastImage.locator(SELECTORS.aiMarkToggle[0]).click({ timeout: 2000 }).catch(() => undefined);
+          await page.waitForTimeout(200);
+        }
+        // 사진 설명(대체 텍스트) — 본문에 따로 문단을 만들지 않고 네이버 자체의 "사진 설명" 칸에 직접 입력
+        if (seg.caption?.trim()) {
+          await lastImage.locator(SELECTORS.imageCaption[0]).click({ timeout: 3000 }).catch(() => undefined);
+          await page.keyboard.type(seg.caption.trim(), { delay: 10 });
+        }
+        // 이미지(+설명 칸) 아래 새 문단으로 커서 이동 — "사진 설명" 칸은 이미지 컴포넌트 안에 격리된 별도
+        // 편집영역이라 ArrowDown 으로는 못 빠져나오고(다음 내용이 캡션 안에 그대로 이어 붙는 버그가 있었음),
+        // 네이버가 이미지 삽입 시 자동으로 만들어 두는 바로 다음 본문 문단을 직접 클릭해서 포커스를 옮깁니다.
+        const nextPara = lastImage.locator("xpath=following-sibling::*[contains(@class,'se-text')][1]");
+        if (await nextPara.count()) {
+          await nextPara.click({ timeout: 2000 }).catch(() => undefined);
+        } else {
+          await page.keyboard.press("ArrowDown").catch(() => undefined);
+        }
       }
       if (i % 3 === 0) await log(`본문 입력 중… (${i + 1}/${segments.length})`);
     }
@@ -220,6 +289,14 @@ const STAGE: Record<keyof typeof SELECTORS, SelectorCheck["stage"]> = {
   body: "editor",
   imageButton: "editor",
   uploadedImage: "popup",
+  imageCaption: "popup",
+  formatDropdown: "editor",
+  formatSectionTitle: "popup",
+  formatBody: "popup",
+  fontSizeDropdown: "editor",
+  fontSize24: "popup",
+  aiMarkToggle: "popup",
+  sidebarClose: "popup",
   publishOpen: "editor",
   saveDraft: "editor",
   tagInput: "dialog",

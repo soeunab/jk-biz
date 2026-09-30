@@ -25,6 +25,11 @@ export const PATCH = handle(async (req: Request, { params }: Ctx) => {
 });
 
 export const DELETE = handle(async (_req: Request, { params }: Ctx) => {
-  await db.post.delete({ where: { id: (await params).id } });
+  const post = await db.post.delete({ where: { id: (await params).id } });
+  if (post.topicId) {
+    const remaining = await db.post.count({ where: { topicId: post.topicId } });
+    // 이 주제로 만든 원고를 마지막 하나까지 지웠으면 "원고 작성됨" 표시를 되돌려 다시 주제로 쓸 수 있게 합니다.
+    if (remaining === 0) await db.topic.updateMany({ where: { id: post.topicId, status: "USED" }, data: { status: "NEW" } });
+  }
   return ok({ redirect: "/posts" });
 });

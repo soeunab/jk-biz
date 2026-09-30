@@ -1,5 +1,4 @@
 import { db } from "../db";
-import { getBrand, accountBrand } from "../brand";
 import { saveMedia } from "../storage";
 import type { Manuscript, ImageSlot } from "../content/types";
 import { aiImage, pexelsImage, screenshotImage, templateImage, thumbnailImage, unsplashImage, type ImageResult } from "./sources";
@@ -18,9 +17,6 @@ function strategy(slot: ImageSlot): ((s: ImageSlot) => Promise<ImageResult | nul
 
 /** 원고의 이미지 슬롯을 채우고 썸네일을 만듭니다. 기존 이미지는 교체됩니다. */
 export async function buildPostImages(postId: string, m: Manuscript, platform: "NAVER" | "BLOGGER", log?: Log) {
-  const post = await db.post.findUnique({ where: { id: postId }, select: { account: { select: { name: true, concept: true } } } });
-  // 썸네일·목록 이미지에 찍히는 문구는 계정마다 달라야 함 — 여러 블로그를 운영할 때 다른 계정 글에 이 브랜드명이 섞여 나가면 안 됨
-  const label = accountBrand(await getBrand(), post?.account).name;
   await db.asset.deleteMany({ where: { postId } });
 
   // 1) 썸네일 (네이버는 검색결과에서 정사각형으로 잘리므로 1:1)
@@ -29,7 +25,6 @@ export async function buildPostImages(postId: string, m: Manuscript, platform: "
   const thumb = await thumbnailImage({
     headline: m.thumbnail.headline,
     sub: m.thumbnail.sub,
-    brand: label,
     background: bg?.buf,
     width: square ? 1080 : 1200,
     height: square ? 1080 : 675,
@@ -37,7 +32,20 @@ export async function buildPostImages(postId: string, m: Manuscript, platform: "
   });
   const t = await saveMedia(thumb.buf, thumb.ext, `posts/${postId}`);
   await db.asset.create({
-    data: { postId, kind: "THUMBNAIL", source: bg ? "GEMINI" : "TEMPLATE", slot: "thumbnail", localPath: t.localPath, publicUrl: t.relUrl, alt: m.title, prompt: m.thumbnail.prompt, order: 0, width: thumb.width, height: thumb.height },
+    data: {
+      postId,
+      kind: "THUMBNAIL",
+      source: bg ? "GEMINI" : "TEMPLATE",
+      slot: "thumbnail",
+      localPath: t.localPath,
+      publicUrl: t.relUrl,
+      alt: m.title,
+      prompt: m.thumbnail.prompt,
+      credit: bg ? "AI 생성 이미지" : "",
+      order: 0,
+      width: thumb.width,
+      height: thumb.height,
+    },
   });
   await log?.("썸네일 생성 완료");
 
@@ -58,7 +66,7 @@ export async function buildPostImages(postId: string, m: Manuscript, platform: "
         await log?.(`${slot.slot} ${slot.source} 실패: ${(e as Error).message.slice(0, 120)}`);
       }
     }
-    result ??= await templateImage(slot.alt, label, 1200, 675, order);
+    result ??= await templateImage(slot.alt, "", 1200, 675, order);
     const saved = await saveMedia(result.buf, result.ext, `posts/${postId}`);
     await db.asset.create({
       data: { postId, kind: "INLINE", source: used, slot: slot.slot, localPath: saved.localPath, publicUrl: saved.relUrl, alt: slot.alt, prompt: slot.prompt, credit: result.credit ?? "", order: order++ },

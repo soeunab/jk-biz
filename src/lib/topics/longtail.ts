@@ -6,7 +6,7 @@
  * 검색량·문서수를 재서 "검색은 되는데 경쟁이 덜한" 롱테일을 제목의 핵심 키워드로 씁니다.
  * 숫자는 전부 네이버 검색광고·검색 API 값이고, 후보 문구 수집(자동완성·화면)은 숫자를 만들지 않습니다.
  */
-import { naverAutocomplete, naverBlogDocCount, naverRelatedSearch, naverSearchAdKeywords, type AdKeyword } from "./sources";
+import { naverAutocomplete, naverBlogDocCount, naverRelatedSearch, naverSearchAdKeywords, naverTrendMomentum, type AdKeyword } from "./sources";
 import { competitionScore, normalizeKeyword, volumeScore } from "./scoring";
 
 /** 헤드 키워드: 띄어쓰기 없는 4글자 이하 (ai·클로드·연말정산·삼성전자) — 제목 핵심 키워드로 쓰지 않고 롱테일 확장의 출발점으로만 씀 */
@@ -49,6 +49,7 @@ export type LongtailCandidate = {
   /** 월 검색량 (PC+모바일). null = 네이버 검색광고에 데이터 없음 */
   volume: number | null;
   compIdx: string | null;
+  adDepth: number | null;
   documentCount: number | null;
   /** 0~100, 문서수÷검색량 포화도가 낮을수록 높음. null = 미확인 */
   competitionScore: number | null;
@@ -128,6 +129,7 @@ export async function expandKeyword(base: string, opts: { network?: boolean; rel
       sources: [...c.sources],
       volume,
       compIdx: a?.compIdx ?? null,
+      adDepth: a?.adDepth ?? null,
       documentCount: docs,
       competitionScore: cs,
       score: longtailScore(volume, cs),
@@ -167,6 +169,12 @@ export function relatedOf(signals: unknown): RelatedKeyword[] | null {
     .map((x) => (typeof x === "string" ? { keyword: x, volume: null } : (x as RelatedKeyword)))
     .filter((x) => x && typeof x.keyword === "string" && x.keyword.trim());
   return out.length ? out : null;
+}
+
+/** 문구 하나의 네이버 데이터랩 트렌드 모멘텀 (최근 4주÷이전 8주). 검색량이 확인된 문구에만 의미가 있음 */
+export async function momentumOf(keyword: string): Promise<number | null> {
+  const m = await naverTrendMomentum([keyword]).catch(() => ({}) as Record<string, number>);
+  return m[keyword] ?? null;
 }
 
 /** 제목에 핵심 키워드가 형태 그대로(띄어쓰기 무시) 들어 있지 않으면 앞에 붙입니다 */
