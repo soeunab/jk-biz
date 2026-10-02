@@ -5,7 +5,7 @@
  */
 import type { ChannelConfig } from "./config";
 import type { Group, GroupMetrics } from "./crossref";
-import { flagText, NO_RESTRICTION, resolveCategory } from "./filters";
+import { flagText, NO_RESTRICTION, resolveCategory, resolveCategoryWeighted } from "./filters";
 import { comma, fmtAgo, fmtCount } from "./text";
 import type { ChannelItem } from "./types";
 
@@ -25,8 +25,10 @@ const minOf = (vals: (number | null | undefined)[]) => (nums(vals).length ? Math
 const maxOf = (vals: (number | null | undefined)[]) => (nums(vals).length ? Math.max(...nums(vals)) : null);
 const kind = (i: ChannelItem) => i.extra?.kind;
 
-export function computeMetrics(g: Group): GroupMetrics {
-  const by = (ch: string) => g.items.filter((i) => i.channel === ch);
+export function computeMetrics(g: Group, tuning?: Partial<ChannelConfig["tuning"]>): GroupMetrics {
+  // 세부 섹션 최신 기사는 인기순이 아니라 '이 채널에 올랐다'는 신호가 아님 (tuning.latestNotChannel)
+  const counted = tuning?.latestNotChannel ? g.items.filter((i) => kind(i) !== "section_latest") : g.items;
+  const by = (ch: string) => counted.filter((i) => i.channel === ch);
   const trends = by("google_trends");
   const nate = by("nate").filter((i) => i.source === "네이트 실시간 이슈 키워드");
   const nateNews = by("nate").filter((i) => i.source !== "네이트 실시간 이슈 키워드");
@@ -44,7 +46,7 @@ export function computeMetrics(g: Group): GroupMetrics {
     trendStartedMin: minOf(trends.map((i) => i.ageMinutes)),
     trendVolume: maxOf(trends.map((i) => i.volume)),
     trendFresh: trends.some((i) => !!i.extra?.fresh),
-    newestAge: minOf([...daum, ...gn, ...trends].map((i) => i.ageMinutes)),
+    newestAge: minOf([...daum, ...gn, ...trends, ...(tuning?.newestAgeAllChannels ? [...home, ...nav] : [])].map((i) => i.ageMinutes)),
     naverBestRank: minOf(rankItems.map((i) => i.rank)),
     naverMaxViews: maxOf(rankItems.map((i) => i.views || null)),
     homeHit: home.length > 0,
@@ -66,7 +68,7 @@ export function computeMetrics(g: Group): GroupMetrics {
  */
 export function scoreGroup(g: Group, cfg: ChannelConfig, include: string[]): void {
   const w = cfg.scoring;
-  const m = computeMetrics(g);
+  const m = computeMetrics(g, cfg.tuning);
   g.metrics = m;
   let score = 0;
   const why: string[] = [];
@@ -156,7 +158,15 @@ export function scoreGroup(g: Group, cfg: ChannelConfig, include: string[]): voi
     votes.push(...(((i.extra?.categories as string[] | undefined) ?? []).filter(Boolean)));
   }
   const text = g.items.map((i) => i.title).join(" ");
-  g.category = resolveCategory(votes, text);
+  if (g.categoryOverride) {
+    g.category = g.categoryOverride;
+    g.categoryAmbiguous = false;
+  } else if (cfg.tuning?.weightedClassify) {
+    const articles = g.items.filter((i) => i.channel !== "google_trends" && !i.extra?.keyword_only && i.source !== "네이트 실시간 이슈 키워드").map((i) => i.title);
+    const guess = resolveCategoryWeighted(votes, text, articles);
+    g.category = guess.category;
+    g.categoryAmbiguous = guess.ambiguous;
+  } else g.category = resolveCategory(votes, text);
   if (!include.includes(NO_RESTRICTION) && !include.includes(g.category)) {
     score += w.offTopicPenalty;
     why.push(`내 블로그 주제 밖(${g.category}) - 감점`);

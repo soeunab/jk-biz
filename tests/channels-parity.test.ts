@@ -2,12 +2,15 @@
  * contents-finder(파이썬) → TS 포팅 동등성 테스트.
  * 기대값 tests/fixtures/channels/expected.json 은 원본 파이썬 코드를 그대로 실행해 만든 것입니다
  * (python3 tests/fixtures/channels/gen_expected.py). 픽스처 항목은 example-report.md 의 실제 수집 근거에서 가져왔습니다.
+ *
+ * 원본과 의도적으로 다르게 바꾼 동작은 config.tuning 스위치로 켜져 있고(기본 설정), 여기서는 ORIGINAL_CHANNEL_CONFIG(전부 끔)로
+ * 원본 동작이 그대로 유지되는지 봅니다. 기본 설정과의 차이는 맨 아래 "원본과 다른 점" 블록에 명시합니다.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { buildGroups, type Group } from "@/lib/topics/channels/crossref";
 import { scoreGroup } from "@/lib/topics/channels/scoring";
-import { DEFAULT_CHANNEL_CONFIG } from "@/lib/topics/channels/config";
+import { DEFAULT_CHANNEL_CONFIG, ORIGINAL_CHANNEL_CONFIG } from "@/lib/topics/channels/config";
 import { classifyText, flagText, resolveCategory } from "@/lib/topics/channels/filters";
 import { fmtAgo, fmtCount, norm, parseAgoMinutes, parseCount, parsePct, tokens } from "@/lib/topics/channels/text";
 import type { ChannelItem } from "@/lib/topics/channels/types";
@@ -26,7 +29,7 @@ export function fixtureItems(): ChannelItem[] {
 
 function run(include: string[]) {
   const groups = buildGroups(fixtureItems());
-  for (const g of groups) scoreGroup(g, DEFAULT_CHANNEL_CONFIG, include);
+  for (const g of groups) scoreGroup(g, ORIGINAL_CHANNEL_CONFIG, include);
   return groups;
 }
 

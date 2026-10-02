@@ -57,6 +57,12 @@ export type Group = {
   score: number;
   reasons: string[];
   category: string;
+  /** 키워드 분류가 애매했는지 (동점·공통어뿐·미분류) — AI 재분류 대상 */
+  categoryAmbiguous?: boolean;
+  /** 지정되면 키워드·투표 분류 대신 이 카테고리 (AI 재분류·관심 주제 일치) */
+  categoryOverride?: string;
+  /** 실시간 키워드(구글 트렌드·네이트/다음 실시간)로 시작한 그룹 */
+  keywordSeed?: boolean;
   flags?: Flags;
   excludedReason: string;
 };
@@ -73,7 +79,12 @@ function itemTokens(it: ChannelItem): Set<string> {
   return toks;
 }
 
-export function buildGroups(items: ChannelItem[], threshold = 1.6): Group[] {
+/**
+ * @param strict 개선 규칙(원본과 다름): 기사로 시작한 그룹은 핵심 토큰이 2개 이상 겹치거나 제목 포함 관계일 때만 붙임.
+ *   원본은 4글자 이상 희귀 토큰 하나(1.6점 = 문턱)만 같아도 묶여 '오픈AI 상장'과 '오픈AI 새 모델'이 한 소재가 됐습니다.
+ *   실시간 키워드로 시작한 그룹은 그 키워드 자체가 소재라 원본 규칙 그대로입니다.
+ */
+export function buildGroups(items: ChannelItem[], threshold = 1.6, strict = false): Group[] {
   // 커뮤니티 글(네이트 판)과 보조 항목(홈판 쇼츠·영상)은 소재 판별에서 제외
   const pool = items.filter((i) => !i.extra?.community && !i.extra?.supplementary);
   const toks = new Map(pool.map((i) => [i, itemTokens(i)] as const));
@@ -100,9 +111,18 @@ export function buildGroups(items: ChannelItem[], threshold = 1.6): Group[] {
     let bestScore = 0;
     for (const g of groups) {
       let s = 0;
-      for (const t of itToks) if (g.core.has(t)) s += weight(t);
-      if (g.seedNorm.length >= 3 && itNorm.includes(g.seedNorm)) s += 2.0;
-      if (itNorm.length >= 3 && itNorm.length <= 14 && g.memberNorms.some((m) => m.includes(itNorm))) s += 2.0;
+      let shared = 0;
+      for (const t of itToks)
+        if (g.core.has(t)) {
+          s += weight(t);
+          shared++;
+        }
+      const seedIn = g.seedNorm.length >= 3 && itNorm.includes(g.seedNorm);
+      const inMember = itNorm.length >= 3 && itNorm.length <= 14 && g.memberNorms.some((m) => m.includes(itNorm));
+      if (seedIn) s += 2.0;
+      if (inMember) s += 2.0;
+      const contained = seedIn || inMember;
+      if (strict && !g.keywordSeed && !contained && shared < 2) continue;
       if (s > bestScore) [best, bestScore] = [g, s];
     }
     if (best && bestScore >= threshold) {
@@ -121,6 +141,7 @@ export function buildGroups(items: ChannelItem[], threshold = 1.6): Group[] {
         reasons: [],
         category: "",
         excludedReason: "",
+        keywordSeed: priority(it) <= 1,
       });
     }
   }

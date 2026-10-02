@@ -2,7 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { accountPerformance, dailySeries, postPerformance, revenueBySource } from "@/lib/analytics/queries";
 import { ActionButton } from "@/components/ActionButton";
-import { CsvImport, RevenueForm } from "@/components/AnalyticsForms";
+import { CsvImport, ImportPostForm, RevenueForm } from "@/components/AnalyticsForms";
 import { RevenueChart, SearchChart, SourceBars, TrafficChart } from "@/components/Charts";
 import { Badge, PageHeader, PLATFORM, Stat } from "@/components/ui";
 import { REVENUE_SOURCE } from "@/lib/labels";
@@ -119,6 +119,12 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="card">
+        <h2 className="mb-1 font-semibold">기존 글 등록</h2>
+        <p className="mb-3 text-xs text-gray-500">프로그램 없이 직접 작성해 올린 글도 등록해두면, GA4·서치콘솔·조회수 CSV 가 이 글 URL로 매칭돼 &quot;글별 성과&quot;에 나타납니다. AI 원고는 없어서 SEO 점수는 계산되지 않습니다.</p>
+        <ImportPostForm accounts={allAccounts} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

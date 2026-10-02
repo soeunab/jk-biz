@@ -94,3 +94,126 @@ export function resolveCategory(votes: string[], text: string): string {
   for (const [v, c] of counts) if (c > n) [top, n] = [v, c];
   return top;
 }
+
+// ---------------------------------------------------------------- 개선된 분류 (원본과 다름 — config.tuning.weightedClassify)
+// 원본 분류의 문제: 32개 중 4개만 원 채널이 카테고리를 알려 주고 나머지는 키워드 개수로 정하는데,
+//  ① '출시·업데이트·연구·감독·스타' 같은 여러 분야 공통어가 1점씩 들어가 엉뚱한 분류가 나오고 ('스타벅스' → 스타·연예인)
+//  ② 동점이면 목록 앞쪽이 이겨 'IT·컴퓨터'(뒤쪽)가 '게임'(앞쪽)에 밀리고
+//  ③ 'AI'·'출시' 정도만 있는 IT 기사, '영업이익·상장' 같은 경제 기사 핵심어가 목록에 없었습니다.
+// 그래서 공통어는 0.4점, 분야 핵심어를 보강하고, 동점·약한 근거는 '애매함'으로 표시해 AI 재분류(discover.ts)에 넘깁니다.
+
+/** 원본 목록에 더하는 분야 핵심어 */
+export const EXTRA_CATEGORY_KEYWORDS: Record<string, string[]> = {
+  "IT·컴퓨터": ["클로드", "Claude", "제미나이", "Gemini", "오픈AI", "OpenAI", "앤트로픽", "Anthropic", "LLM", "생성형", "GPT", "ChatGPT", "딥시크", "코파일럿", "챗봇", "퍼플렉시티", "그록", "미드저니", "에이전트", "데이터센터", "HBM", "파운드리", "GPU", "오픈소스", "마이크로소프트", "온디바이스", "하이퍼클로바", "빅테크", "플랫폼"],
+  "비즈니스·경제": ["영업이익", "상장", "IPO", "기업가치", "시가총액", "시총", "인수", "합병", "공모주", "증권", "금융", "가상자산", "비트코인", "원달러", "GDP", "소상공인", "부가세", "종부세", "양도세", "주담대", "DSR", "적자", "흑자", "유상증자", "주가", "목표가", "펀드", "파킹통장", "CMA", "ISA", "기준금리", "달러", "엔화", "수수료", "신용점수", "보조금", "바우처", "근로장려금", "몸값", "경기침체"],
+  "세계여행": ["해외", "비자", "입국", "출국", "면세", "환전", "이심", "eSIM", "로밍", "여권", "직항", "베트남", "태국", "다낭", "하와이", "괌", "유럽", "오사카", "도쿄", "후쿠오카"],
+  "국내여행": ["여행", "축제", "단풍", "휴양림", "캠핑", "글램핑", "둘레길", "케이블카", "리조트", "펜션", "가볼만한곳", "나들이"],
+  "맛집": ["빵집", "오마카세", "미쉐린", "노포", "팝업"],
+  "요리·레시피": ["만드는 법", "황금레시피"],
+  "건강·의학": ["독감", "코로나", "감기", "수면", "혈압", "당뇨", "비만", "위고비", "탈모", "치매", "건강검진", "예방접종"],
+  "패션·미용": ["올리브영", "선크림", "쿠션"],
+  "게임": ["e스포츠", "LCK", "롤드컵", "넥슨", "엔씨소프트", "크래프톤", "넷마블", "닌텐도 스위치"],
+  "스포츠": ["경기", "리그", "득점", "홈런", "KBO", "K리그", "대표팀", "MLB", "NBA"],
+  "자동차": ["SUV", "하이브리드", "충전소", "완성차", "모빌리티", "수입차"],
+  "육아·결혼": ["부모급여", "아동수당", "출산율"],
+  "반려동물": ["반려견", "반려묘", "펫푸드"],
+  "공연·전시": ["페스티벌", "전시회"],
+  "음악": ["뮤직비디오", "음방"],
+  "드라마": ["OTT", "디즈니플러스", "쿠팡플레이"],
+  "영화": ["극장", "개봉작"],
+  "문학·책": ["노벨문학상", "만해문학상"],
+  "교육·학문": ["모의고사", "내신", "대입"],
+};
+
+/** 여러 분야에 두루 나오는 말 — 0.4점만 */
+export const GENERIC_CATEGORY_WORDS = new Set([
+  "출시", "업데이트", "연구", "감독", "선수", "브랜드", "스타", "약", "오늘", "하루", "생각", "일상", "작품", "그림", "디자인", "카드", "소비",
+  "보험", "운동", "교육", "학교", "병원", "앱", "칩", "메타", "보안", "리뷰", "사진", "방송", "출연", "전시", "무대", "삼성", "애플", "구글",
+  "유튜브", "과학", "가전", "산책", "입양", "시행", "제도", "정부", "청년", "의료", "배터리", "전기차", "테슬라", "예매", "컴백", "근황",
+  "식음료", "소품", "재배", "기아", "기업", "플랫폼", "에이전트", "해외", "여행", "경기", "팝업", "베트남", "태국", "유럽", "달러", "수수료",
+  "연휴", "축제", "카페", "식당", "MC", "OS", "롤", "펫", "공연", "음악", "영화", "드라마",
+]);
+
+const LATIN = /^[A-Za-z0-9 .+-]+$/;
+const wordRe = new Map<string, RegExp>();
+/** 영문 낱말은 앞뒤가 영문이 아닐 때만 ('OS' 가 'costco' 에, 'AI' 가 'OpenAI' 의 일부로 잡히지 않게) */
+export function hasWord(text: string, w: string): boolean {
+  if (!LATIN.test(w)) return text.includes(w);
+  let re = wordRe.get(w);
+  if (!re) wordRe.set(w, (re = new RegExp(`(?<![A-Za-z])${w.replace(/[.+-]/g, "\\$&")}(?![A-Za-z])`, "i")));
+  return re.test(text);
+}
+
+const WEIGHTED: [string, [string, number][]][] = CATEGORY_LIST.map((cat) => {
+  const words = [...new Set([...(CATEGORY_KEYWORDS[cat] ?? []), ...(EXTRA_CATEGORY_KEYWORDS[cat] ?? [])])];
+  return [cat, words.map((w) => [w, GENERIC_CATEGORY_WORDS.has(w) ? 0.4 : 1] as [string, number])];
+});
+
+export type CategoryGuess = { category: string; score: number; runnerUp: string; ambiguous: boolean };
+
+/** 카테고리별 가중 점수 (분야 핵심어 1점, 공통어 0.4점) */
+export function categoryScores(text: string): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const [cat, words] of WEIGHTED) {
+    let s = 0;
+    for (const [w, wt] of words) if (hasWord(text, w)) s += wt;
+    if (s > 0) out.set(cat, Math.round(s * 10) / 10);
+  }
+  return out;
+}
+
+/**
+ * 가중 키워드 분류. 1위·2위가 동점이면 ambiguous — AI 재분류 대상.
+ * 하나도 안 맞거나 공통어뿐(1점 미만)이면 미분류(ambiguous).
+ */
+export function classifyWeighted(text: string, among?: string[]): CategoryGuess {
+  const ranked = [...categoryScores(text)].filter(([c]) => !among || among.includes(c)).sort((a, b) => b[1] - a[1]);
+  if (!ranked.length) return { category: among?.[0] ?? UNCLASSIFIED, score: 0, runnerUp: "", ambiguous: !among };
+  const [[cat, s], second] = [ranked[0], ranked[1]];
+  // 공통어만 맞았으면(1점 미만) 추측하지 않고 미분류 — '스타벅스'가 '스타' 때문에 연예인이 되던 문제
+  if (s < 1 && !among) return { category: UNCLASSIFIED, score: s, runnerUp: cat, ambiguous: true };
+  return { category: cat, score: s, runnerUp: second?.[0] ?? "", ambiguous: s < 1 || (!!second && second[1] === s) };
+}
+
+/**
+ * 원 채널 투표 우선 — 투표 1위가 동점이면 키워드 점수로 가림.
+ * 투표가 없으면 기사 제목별로 분류해 다수결 (합친 글에서 단어 하나가 분류를 정하지 않도록 — '최태원' 소송 기사 3건 + IPO 기사 1건이
+ * 경제로 가던 문제). 지지하는 기사가 절반 미만이면 ambiguous.
+ */
+export function resolveCategoryWeighted(votes: string[], text: string, titles: string[] = []): CategoryGuess {
+  const counts = new Map<string, number>();
+  for (const v of votes) if (v) counts.set(v, (counts.get(v) ?? 0) + 1);
+  if (!counts.size) {
+    const whole = classifyWeighted(text);
+    if (titles.length < 2) return whole;
+    const per = new Map<string, number>();
+    for (const t of titles) {
+      const c = classifyWeighted(t).category;
+      if (c !== UNCLASSIFIED) per.set(c, (per.get(c) ?? 0) + 1);
+    }
+    if (!per.size) return { ...whole, ambiguous: true };
+    const top = Math.max(...per.values());
+    const tied = [...per].filter(([, n]) => n === top).map(([c]) => c);
+    const pick = tied.length === 1 ? tied[0] : classifyWeighted(text, tied).category;
+    return { category: pick, score: whole.score, runnerUp: whole.runnerUp, ambiguous: whole.ambiguous || tied.length > 1 || top * 2 < titles.length };
+  }
+  const max = Math.max(...counts.values());
+  const tied = [...counts].filter(([, c]) => c === max).map(([v]) => v);
+  if (tied.length === 1) return { category: tied[0], score: max, runnerUp: "", ambiguous: false };
+  const kw = classifyWeighted(text, tied);
+  return { ...kw, ambiguous: kw.score === 0 || kw.ambiguous };
+}
+
+/** 수집 페이지의 카테고리 지정값 — '국내여행,세계여행' 처럼 여러 개면 제목 키워드로 그중 하나 (못 가르면 첫 번째) */
+export function pickCategory(title: string, spec: string): string {
+  const opts = spec.split(",").map((s) => s.trim()).filter(Boolean);
+  if (opts.length <= 1) return opts[0] ?? "";
+  return classifyWeighted(title, opts).category;
+}
+
+/** 'AI 관련' 소재 묶음 프리셋 — 이 말이 소재 제목에 하나라도 있어야 추천 (실시간 발굴의 focusTerms) */
+export const AI_FOCUS_TERMS = ["AI", "인공지능", "챗GPT", "ChatGPT", "GPT", "클로드", "Claude", "제미나이", "Gemini", "오픈AI", "OpenAI", "앤트로픽", "Anthropic", "LLM", "생성형", "딥시크", "DeepSeek", "코파일럿", "Copilot", "퍼플렉시티", "Perplexity", "그록", "Grok", "미드저니", "챗봇", "하이퍼클로바", "AI 에이전트", "온디바이스"];
+
+export function matchesFocus(text: string, terms: string[]): boolean {
+  return terms.some((t) => t.trim() && hasWord(text, t.trim()));
+}

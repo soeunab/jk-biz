@@ -39,6 +39,36 @@ export function CsvImport() {
   );
 }
 
+/** 프로그램 없이 직접 작성해 올린 글을 등록 — 등록해두면 GA4/서치콘솔·조회수 CSV 가 이 글의 remoteUrl 로 매칭됨 */
+export function ImportPostForm({ accounts }: { accounts: { id: string; name: string }[] }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [f, setF] = useState({ accountId: accounts[0]?.id ?? "", title: "", remoteUrl: "", publishedAt: today });
+  const { busy, msg, submit } = useSubmit();
+  return (
+    <form
+      className="grid gap-2 md:grid-cols-5 md:items-end"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit("/api/posts/import", f).then((r) => {
+          if (r) setF({ ...f, title: "", remoteUrl: "" });
+        });
+      }}
+    >
+      <div>
+        <label className="label">계정</label>
+        <select className="input" value={f.accountId} onChange={(e) => setF({ ...f, accountId: e.target.value })}>
+          {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+      </div>
+      <div><label className="label">제목</label><input className="input" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></div>
+      <div><label className="label">글 URL</label><input className="input" value={f.remoteUrl} onChange={(e) => setF({ ...f, remoteUrl: e.target.value })} placeholder="https://..." /></div>
+      <div><label className="label">발행일</label><input type="date" className="input" value={f.publishedAt} onChange={(e) => setF({ ...f, publishedAt: e.target.value })} /></div>
+      <button className="btn-primary" disabled={busy || !f.title.trim() || !f.remoteUrl.trim()}>{busy && <Spinner />}등록</button>
+      {msg && <p className="text-xs text-gray-500 md:col-span-5">{msg}</p>}
+    </form>
+  );
+}
+
 export function RevenueForm({ accounts }: { accounts: { id: string; name: string }[] }) {
   const today = new Date().toISOString().slice(0, 10);
   const [f, setF] = useState({ date: today, source: "ADPOST", amount: "", accountId: accounts[0]?.id ?? "", note: "" });

@@ -51,6 +51,7 @@ npm run channels:check [-- nate daum] [--save]   # 실시간 6채널 수집 점�
 2. Playwright MCP 로 해당 URL(`channels/config.ts`)을 열어 목록 요소를 찾고, `channels/collectors/scripts.ts` 의 추출 JS 선택자를 고칩니다.
 3. `tests/fixtures/channels/pages.html` 도 새 구조로 고쳐 `npm test` 로 추출 결과를 고정한 뒤 `channels:check` 로 ✅ 확인.
 - 점수 공식·근거 문장은 원본과 동일해야 합니다. 바꿀 땐 의도적인 변경인지 확인하고 `expected.json` 과의 차이를 테스트에 명시하세요.
+- 원본과 의도적으로 다르게 바꾼 동작(엄격한 묶기·가중 분류·신선도 채널 확대 등)은 `config.ts` 의 `tuning` 스위치(기본 켬)로만 넣습니다. 동등성 테스트는 `ORIGINAL_CHANNEL_CONFIG`(전부 끔)로 돌고, 개선 동작은 `tests/channels-improvements.test.ts` 가 검증합니다.
 
 ## 분석 데이터가 이상할 때
 1. `db_summary` 로 계정의 구글 연결·GA4 속성 ID·서치콘솔 URL 설정 확인.

@@ -46,14 +46,20 @@ beforeEach(() => {
 describe("analyzeItems", () => {
   it("추천은 점수순, 부정 사건·정치는 제외, 카테고리 밖은 따로", () => {
     const a = analyzeItems(items, ["비즈니스·경제"]);
+    // 원본과 다른 점(config.tuning): '최태원'은 원본에선 미분류(주제 밖, 51점)였는데 가중 분류로 기사 4건 중 1건(IPO)만 경제라
+    // '애매함'으로 표시된 채 경제로 들어옴(실제 발굴에선 AI 재분류 대상) — 주제 밖 감점이 빠지고 네이버 랭킹 1시간 전 기사가
+    // 신선도에 들어가 74점. SK하닉 소재도 네이버 기사 시각이 신선도에 들어가 29 → 33.
     expect(a.ranked.map((g) => [g.label, g.score])).toEqual([
+      ["최태원", 74],
       ["고기", 66],
       ["자영업", 63],
       ["국내 기름값 19주 연속 하락…추석 연휴 고속도로 주유소도 100원↓", 54],
       ["수도권 광역급행철도 c노선", 47],
       ["스타벅스", 45],
-      ["‘적자 기업’서 200조 몸값으로…SK하닉 솔리다임, 내년 美 상장 시동", 29],
+      ["‘적자 기업’서 200조 몸값으로…SK하닉 솔리다임, 내년 美 상장 시동", 33],
     ]);
+    expect(a.ranked[0].categoryAmbiguous).toBe(true);
+    expect(a.ranked.slice(1).every((g) => !g.categoryAmbiguous)).toBe(true);
     expect(a.excluded.map((g) => g.label)).toEqual(["아파트 화재", "국정감사 일정"]);
     expect(a.offTopic.map((g) => g.category)).toContain("IT·컴퓨터");
     expect(a.ranked.every((g) => g.category === "비즈니스·경제")).toBe(true);
@@ -73,7 +79,7 @@ describe("analyzeItems", () => {
   });
 
   it("AI 에게 주는 근거 줄은 수집 값만", () => {
-    const g = analyzeItems(items, ["비즈니스·경제"]).ranked[0];
+    const g = analyzeItems(items, ["비즈니스·경제"]).ranked.find((x) => x.label === "고기")!;
     const lines = evidenceLines(g);
     expect(lines).toContain("구글 트렌드 / 구글 트렌드 실시간 인기(24시간) / 고기 (검색량 1,000%↑, 1시간 전)");
     expect(lines.split("\n")).toHaveLength(5);
@@ -84,7 +90,9 @@ describe("discoverFromChannels", () => {
   it("추천 소재만 저장, 모르는 지표는 null, 근거는 signals 에 구조화", async () => {
     const r = await discoverFromChannels({ category: "비즈니스·경제", limit: 3 }, ctx);
     expect(r).toMatchObject({ created: 3, excluded: 2 });
-    expect(created.map((t) => t.keyword)).toEqual(["고기", "자영업", "국내 기름값"]);
+    // "자영업"은 참여 항목 대부분(1320·420·420분)이 6시간을 넘어 수집 단계에서 빠지고 신선한 항목(120분)
+    // 하나만 남아 채널 수·점수가 크게 줄어 3위 밖으로 밀려남 — "수도권 광역급행철도 c노선"이 그 자리로 올라옴
+    expect(created.map((t) => t.keyword)).toEqual(["고기", "국내 기름값", "수도권 광역급행철도 c노선"]);
     const t = created[0] as Record<string, unknown> & { signals: Record<string, unknown> };
     expect(t).toMatchObject({
       origin: "channels",
@@ -114,12 +122,20 @@ describe("discoverFromChannels", () => {
   it("이미 저장된 소재는 다시 저장하지 않음", async () => {
     existing = [{ keyword: "고기", normalizedKeyword: "고기" }];
     await discoverFromChannels({ category: "비즈니스·경제", limit: 2 }, ctx);
-    expect(created.map((t) => t.keyword)).toEqual(["자영업", "국내 기름값"]);
+    expect(created.map((t) => t.keyword)).toEqual(["국내 기름값", "수도권 광역급행철도 c노선"]);
   });
 
   it("채널 하나만 골라도 동작 (한 채널 소재는 SUGGESTED)", async () => {
     await discoverFromChannels({ category: "비즈니스·경제", limit: 5, channels: ["google_trends"] }, ctx);
     expect(created.length).toBeGreaterThan(0);
     expect(created.every((t) => t.verification === "SUGGESTED" && t.confidence === 1)).toBe(true);
+  });
+
+  it("6시간 넘은 자료는 수집 직후(교차검증 전)에 걸러져 소재 구성에 아예 안 들어감", async () => {
+    // "스타벅스"의 참여 항목 2건(1260분·1440분)이 전부 6시간 밖이라 수집 단계에서 다 빠지고,
+    // 항목이 하나도 안 남아 그룹 자체가 안 만들어짐 — limit 을 넉넉히 줘도 저장 대상이 될 수 없음
+    await discoverFromChannels({ category: "비즈니스·경제", limit: 20 }, ctx);
+    expect(created.some((t) => t.keyword === "스타벅스")).toBe(false);
+    expect(logs.some((l) => l.includes("6시간 넘은 자료") && l.includes("제외"))).toBe(true);
   });
 });

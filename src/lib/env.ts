@@ -25,6 +25,11 @@ export const env = {
     const cloud = read("CLOUDINARY_CLOUD_NAME"), key = read("CLOUDINARY_API_KEY"), secret = read("CLOUDINARY_API_SECRET");
     return cloud && key && secret ? { cloud, key, secret } : undefined;
   },
+  /** 블로거용 이미지 공개 호스팅 — 이 앱이 이미 쓰는 구글 클라우드 프로젝트의 전용 서비스 계정·버킷 (새 계정 불필요) */
+  get gcs() {
+    const bucket = read("GCS_BUCKET"), keyFile = read("GCS_KEY_FILE");
+    return bucket && keyFile ? { bucket, keyFile } : undefined;
+  },
 
   get naverOpenApi() {
     const id = read("NAVER_CLIENT_ID"), secret = read("NAVER_CLIENT_SECRET");
@@ -56,6 +61,11 @@ export function integrationStatus() {
     { key: "naverOpen", label: "네이버 검색·데이터랩 API", ok: !!env.naverOpenApi, hint: "NAVER_CLIENT_ID / NAVER_CLIENT_SECRET" },
     { key: "naverAd", label: "네이버 검색광고 API (검색량)", ok: !!env.naverSearchAd, hint: "NAVER_AD_API_KEY / NAVER_AD_SECRET_KEY / NAVER_AD_CUSTOMER_ID" },
     { key: "google", label: "구글 OAuth (블로거·GA4·서치콘솔·애드센스)", ok: !!env.google, hint: "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET" },
-    { key: "imageHost", label: "이미지 외부 호스팅", ok: env.imageHost === "local" ? !env.publicBaseUrl.includes("localhost") : !!env.cloudinary, hint: "PUBLIC_BASE_URL(외부 접속 가능 주소) 또는 CLOUDINARY_*" },
+    {
+      key: "imageHost",
+      label: "이미지 외부 호스팅",
+      ok: env.imageHost === "local" ? !env.publicBaseUrl.includes("localhost") : env.imageHost === "gcs" ? !!env.gcs : !!env.cloudinary,
+      hint: "GCS_BUCKET/GCS_KEY_FILE(권장) 또는 CLOUDINARY_* 또는 PUBLIC_BASE_URL(외부 접속 가능 주소)",
+    },
   ];
 }

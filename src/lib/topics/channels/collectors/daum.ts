@@ -3,7 +3,7 @@
  * 카테고리는 기사가 처음 발견된 페이지 기준만 씁니다. 섹션 페이지 사이드바의 '많이 본 뉴스'에는 다른 분야 기사가 섞여 있어,
  * 나중 페이지에서 덮어쓰면 엉뚱한 카테고리가 붙기 때문입니다(원본 주석 참고).
  */
-import { clean, parseAgoMinutes } from "../text";
+import { clean, parseAgeMinutes } from "../text";
 import type { ChannelItem, ChannelResult } from "../types";
 import { dump, emptyResult, firstLine, goto, openPage, run, type CollectContext } from "./common";
 import { DAUM_ARTICLES, DAUM_TRENDS } from "./scripts";
@@ -28,7 +28,7 @@ export function articleItems(rows: ArticleRow[], name: string, category: string,
     const infos = r.infos ?? [];
     let age: number | null = null;
     for (const x of infos) {
-      const a = parseAgoMinutes(x);
+      const a = parseAgeMinutes(x);
       if (a !== null) age = a;
     }
     out.push({ channel: "daum", source: name, title: clean(r.title), url: r.url, rank: i + 1, category, ageMinutes: age, press: infos[0] ?? "" });

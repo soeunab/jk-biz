@@ -10,8 +10,11 @@ export type DailyPoint = { date: string; pageviews: number; clicks: number; impr
 export async function dailySeries(days = 30, accountId?: string): Promise<DailyPoint[]> {
   const since = daysAgo(days);
   const postFilter = accountId ? { post: { accountId } } : {};
-  const [metrics, revenues] = await Promise.all([
+  const [metrics, accountMetrics, revenues] = await Promise.all([
     db.postMetric.findMany({ where: { date: { gte: since }, ...postFilter }, select: { date: true, source: true, pageviews: true, clicks: true, impressions: true } }),
+    // GA4 는 글에 매칭됐는지와 무관한 사이트 전체 조회수 총합을 따로 동기화해 둠(AccountMetric) — 글이 아직 없거나
+    // 경로가 안 맞아 매칭이 안 돼도 실제 트래픽이 있으면 보여야 하므로 이걸 조회수의 기준으로 씀.
+    db.accountMetric.findMany({ where: { date: { gte: since }, source: "GA4", ...(accountId ? { accountId } : {}) }, select: { date: true, pageviews: true } }),
     db.revenue.findMany({ where: { date: { gte: since }, ...(accountId ? { accountId } : {}) }, select: { date: true, amount: true } }),
   ]);
   const map = new Map<string, DailyPoint>();
@@ -19,10 +22,15 @@ export async function dailySeries(days = 30, accountId?: string): Promise<DailyP
     const d = ymd(daysAgo(i));
     map.set(d, { date: d, pageviews: 0, clicks: 0, impressions: 0, revenue: 0 });
   }
+  for (const m of accountMetrics) {
+    const p = map.get(ymd(m.date));
+    if (p) p.pageviews += m.pageviews;
+  }
   for (const m of metrics) {
     const p = map.get(ymd(m.date));
     if (!p) continue;
-    if (VIEW_SOURCES.includes(m.source)) p.pageviews += m.pageviews;
+    // GA4 글별 조회수는 이미 위 AccountMetric 총합에 포함돼 있어 또 더하면 중복 집계가 됨 — 네이버·수동 입력만 더함
+    if (m.source !== "GA4" && VIEW_SOURCES.includes(m.source)) p.pageviews += m.pageviews;
     if (m.source === "GSC") (p.clicks += m.clicks), (p.impressions += m.impressions);
   }
   for (const r of revenues) {
@@ -111,14 +119,24 @@ export async function accountPerformance(days = 30) {
     include: {
       posts: { select: { status: true, publishedAt: true, metrics: { where: { date: { gte: since } }, select: { source: true, pageviews: true } } } },
       revenues: { where: { date: { gte: since } }, select: { amount: true, source: true } },
+      // GA4 사이트 전체 조회수 총합 — 글 매칭 여부와 무관하게 실제 계정 트래픽을 보여주기 위함(dailySeries 와 같은 이유)
+      accountMetric: { where: { date: { gte: since }, source: "GA4" }, select: { pageviews: true } },
     },
   });
-  const rows = accounts.map((a) => ({
-    a,
-    pv: a.posts.flatMap((p) => p.metrics).filter((m) => VIEW_SOURCES.includes(m.source)).reduce((s, m) => s + m.pageviews, 0),
-    adpost: a.revenues.filter((r) => r.source === "ADPOST").reduce((s, r) => s + r.amount, 0),
-    other: a.revenues.filter((r) => r.source !== "ADPOST").reduce((s, r) => s + r.amount, 0),
-  }));
+  const rows = accounts.map((a) => {
+    const ga4Total = a.accountMetric.reduce((s, m) => s + m.pageviews, 0);
+    // GA4 글별 조회수는 이미 ga4Total 에 포함되므로 중복 집계 방지 위해 제외 — 네이버·수동 입력만 더함
+    const matchedNonGa4 = a.posts
+      .flatMap((p) => p.metrics)
+      .filter((m) => m.source !== "GA4" && VIEW_SOURCES.includes(m.source))
+      .reduce((s, m) => s + m.pageviews, 0);
+    return {
+      a,
+      pv: ga4Total + matchedNonGa4,
+      adpost: a.revenues.filter((r) => r.source === "ADPOST").reduce((s, r) => s + r.amount, 0),
+      other: a.revenues.filter((r) => r.source !== "ADPOST").reduce((s, r) => s + r.amount, 0),
+    };
+  });
   const allocation = allocateAdpost(
     rows
       .filter((r) => r.a.platform === "NAVER")

@@ -4,7 +4,7 @@
  * BLOG 가 아닌 항목(쇼츠·영상 등)은 교차검증에서 빼고 참고용(supplementary)으로만 둡니다.
  * (원본의 상위 글 본문 구조 분석 — 사진 수·분량 — 은 점수에 쓰이지 않아 옮기지 않았습니다)
  */
-import { clean, parseAgoMinutes } from "../text";
+import { clean, parseAgeMinutes } from "../text";
 import type { ChannelItem, ChannelResult } from "../types";
 import { dump, emptyResult, firstLine, goto, openPage, run, scroll, type CollectContext } from "./common";
 import { HOST_HISTOGRAM, NAVER_HOME_FEED } from "./scripts";
@@ -64,7 +64,7 @@ export function feedToItems(feed: FeedRow[]): ChannelItem[] {
       url: r.url,
       rank: i + 1,
       press: r.channel ?? "",
-      ageMinutes: parseAgoMinutes(r.time),
+      ageMinutes: parseAgeMinutes(r.time),
       extra: { service, clip: !!r.clip, pages: r.pages ?? "", post_url: blogPostUrl(r), ...(service !== "BLOG" ? { supplementary: true } : {}) },
     });
   }

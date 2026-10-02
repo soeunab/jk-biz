@@ -46,6 +46,57 @@ export function parseAgoMinutes(text: string | null | undefined): number | null 
   return d * 1440 + h * 60 + mi;
 }
 
+const KST = (y: number, mo: number, d: number, h = 0, mi = 0) =>
+  new Date(`${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}T${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}:00+09:00`);
+const since = (t: Date, now: Date) => (Number.isFinite(t.getTime()) ? Math.max(0, Math.floor((now.getTime() - t.getTime()) / 60_000)) : null);
+
+/**
+ * 수집기용 나이 파싱 — parseAgoMinutes(원본 규칙, 동등성 테스트 대상)가 못 읽는 형식까지 읽습니다.
+ * 원본은 '1주 전'·'어제'·'2026.10.01. 오후 3:12' 를 null(=나이 모름)로 둬서, 신선도 필터가 오래된 자료를 "신선"으로 통과시켰습니다.
+ *  - 'N주 전'·'N개월 전'·'N달 전'·'N년 전', '어제'·'그제'
+ *  - 'YYYY.MM.DD.'(+ '오전/오후 H:MM'), 'MM.DD.', 'YYYY-MM-DD HH:MM', ISO — 한국 시간 기준
+ */
+export function parseAgeMinutes(text: string | null | undefined, now = new Date()): number | null {
+  const ago = parseAgoMinutes(text);
+  if (ago != null) return ago;
+  if (!text) return null;
+  const t = String(text).trim();
+  if (t.includes("동안")) return null;
+  const unit = t.match(/(\d+)\s*(주|개월|달|년)\s*전/);
+  if (unit) return Number(unit[1]) * { 주: 10_080, 개월: 43_200, 달: 43_200, 년: 525_600 }[unit[2] as "주"];
+  if (/^(그제|그저께)/.test(t)) return 2880;
+  if (t.startsWith("어제")) return 1440;
+  const hm = (s: string) => {
+    const m = s.match(/(오전|오후)?\s*(\d{1,2}):(\d{2})/);
+    if (!m) return [0, 0];
+    let h = Number(m[2]);
+    if (m[1] === "오후" && h < 12) h += 12;
+    if (m[1] === "오전" && h === 12) h = 0;
+    return [h, Number(m[3])];
+  };
+  const full = t.match(/(20\d{2})[.\-/]\s*(\d{1,2})[.\-/]\s*(\d{1,2})/);
+  if (full) {
+    if (/T\d{2}:\d{2}/.test(t)) return since(new Date(t), now);
+    const [h, mi] = hm(t.slice(full.index! + full[0].length));
+    return since(KST(Number(full[1]), Number(full[2]), Number(full[3]), h, mi), now);
+  }
+  const short = t.match(/^(\d{1,2})\.\s*(\d{1,2})\./);
+  if (short) {
+    const [h, mi] = hm(t.slice(short[0].length));
+    const y = Number(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric" }).format(now));
+    let d = KST(y, Number(short[1]), Number(short[2]), h, mi);
+    if (d.getTime() > now.getTime() + 86_400_000) d = KST(y - 1, Number(short[1]), Number(short[2]), h, mi); // 연초에 본 '12.31.'
+    return since(d, now);
+  }
+  return null;
+}
+
+/** 네이버 뉴스 클러스터 주소의 생성 시각 ('/cluster/c_202610021430_00001216/…' → 한국 시간 2026-10-02 14:30) */
+export function clusterAgeMinutes(href: string | null | undefined, now = new Date()): number | null {
+  const m = (href ?? "").match(/c_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})_/);
+  return m ? since(KST(Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5])), now) : null;
+}
+
 export function fmtAgo(minutes: number | null | undefined): string {
   if (minutes == null) return "-";
   if (minutes < 60) return `${minutes}분 전`;
@@ -86,7 +137,7 @@ export const STOPWORDS = new Set(
 스포츠 오늘의 대한 무엇 어떻게 어떤 정말 진짜 완전 대박 충격 반전 현실 이유는 있다 없다 한다 했다 된다 됐다`.split(/\s+/),
 );
 
-function stripJosa(tok: string): string {
+export function stripJosa(tok: string): string {
   for (const j of JOSA) {
     if (tok.endsWith(j) && tok.length - j.length >= 2) return tok.slice(0, -j.length);
   }

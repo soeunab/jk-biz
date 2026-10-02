@@ -19,8 +19,77 @@ const ORIGINS = [
   ["channels", "📡 실시간 트렌드"],
 ] as const;
 
+/** 경쟁점수(0~100, 높을수록 좋음)를 사람이 바로 이해할 수 있는 말로 */
+function competitionVerdict(score: number | null): { label: string; color: string } {
+  if (score == null) return { label: "미확인", color: "text-gray-400" };
+  if (score >= 70) return { label: "매우 좋음", color: "text-emerald-700" };
+  if (score >= 50) return { label: "좋음", color: "text-emerald-600" };
+  if (score >= 30) return { label: "보통", color: "text-amber-600" };
+  if (score >= 10) return { label: "나쁨", color: "text-red-600" };
+  return { label: "매우 나쁨(포화)", color: "text-red-700" };
+}
+
+/** 고른 키워드 말고 더 나은 롱테일 후보가 있었는지(점수 기준, 소재와 무관한 키워드일 수 있어 참고용) */
+function KeywordAnalysis({ lt }: { lt: NonNullable<ChannelTopicSignals["longtail"]> }) {
+  const used = lt.candidates.find((c) => c.keyword === lt.usedKeyword);
+  const sorted = [...lt.candidates].sort((a, b) => b.score - a.score);
+  const usedVerdict = competitionVerdict(used?.competitionScore ?? null);
+  return (
+    <details>
+      <summary className="cursor-pointer text-gray-500">🔍 키워드 분석 — 쓴 키워드 &quot;{lt.usedKeyword}&quot; ({usedVerdict.label})</summary>
+      <div className="mt-1 flex flex-col gap-1">
+        {used ? (
+          <p className="text-gray-600">
+            쓴 키워드: <b>{used.keyword}</b> · 검색량 {used.volume != null ? `월 ${formatNumber(used.volume)}` : "미확인"} · 문서수{" "}
+            {used.documentCount != null ? formatNumber(used.documentCount) : "미확인"} · 경쟁점수{" "}
+            <span className={usedVerdict.color}>{used.competitionScore != null ? Math.round(used.competitionScore) : "미확인"}({usedVerdict.label})</span>
+          </p>
+        ) : (
+          <p className="text-gray-500">쓴 키워드 &quot;{lt.usedKeyword}&quot;는 롱테일 후보 목록(자동완성 확장)에 없었어요 — AI가 수집 근거 제목의 단어를 그대로 쓴 경우예요.</p>
+        )}
+        <table className="text-left text-gray-600">
+          <thead className="text-gray-400">
+            <tr>
+              <th className="pr-3 font-normal">후보 키워드</th>
+              <th className="pr-3 font-normal">검색량</th>
+              <th className="pr-3 font-normal">경쟁점수</th>
+              <th className="font-normal">선택용 점수</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.slice(0, 8).map((c) => {
+              const isUsed = c.keyword === lt.usedKeyword;
+              const v = competitionVerdict(c.competitionScore);
+              return (
+                <tr key={c.keyword} className={isUsed ? "font-semibold text-gray-900" : ""}>
+                  <td className="pr-3">
+                    {c.keyword}
+                    {isUsed && " ← 이번에 쓴 키워드"}
+                    {lt.best === c.keyword && !isUsed && " (측정상 최고점)"}
+                  </td>
+                  <td className="pr-3 tabular-nums">{c.volume != null ? formatNumber(c.volume) : "미확인"}</td>
+                  <td className={`pr-3 tabular-nums ${v.color}`}>{c.competitionScore != null ? Math.round(c.competitionScore) : "미확인"}</td>
+                  <td className="tabular-nums">{c.score}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <p className="text-gray-400">
+          ⚠️ &quot;선택용 점수&quot;가 더 높은 후보가 있어도, 이 소재(기사 내용)와 실제로 관련 없는 일반 연관어일 수 있어요 — 제목을 바꾸기 전에 내용이 맞는지 직접 확인하세요.
+        </p>
+      </div>
+    </details>
+  );
+}
+
 function ChannelEvidence({ s }: { s: ChannelTopicSignals }) {
   const m = s.metrics;
+  const used = s.longtail?.candidates.find((c) => c.keyword === s.longtail?.usedKeyword);
+  const best = s.longtail?.candidates.find((c) => c.keyword === s.longtail?.best);
+  // 쓴 키워드가 경쟁에서 나쁜 편인데(매우 나쁨/미확인), 측정상 최고점 후보는 그보다 뚜렷이 나을 때만 한눈에 보이는 경고 배지
+  const competitionWarning =
+    s.longtail && used && (used.competitionScore == null || used.competitionScore < 30) && best && best.keyword !== used.keyword && best.score - used.score >= 15;
   return (
     <div className="flex flex-col gap-1 text-xs">
       <div className="flex flex-wrap items-center gap-1">
@@ -29,6 +98,11 @@ function ChannelEvidence({ s }: { s: ChannelTopicSignals }) {
         ))}
         {(m?.trendPct ?? 0) >= DEFAULT_CHANNEL_CONFIG.googleTrends.instantPct && <span className="badge bg-red-50 text-red-700">🔥 즉시 소재</span>}
         {s.preempt && <span className="badge bg-violet-50 text-violet-700" title="네이트·트렌드·다음에는 있는데 네이버 랭킹·홈판에는 아직 없음 (발행 전 네이버 검색으로 한 번 더 확인)">🚀 선점 후보</span>}
+        {competitionWarning && (
+          <span className="badge bg-red-50 text-red-700" title="쓴 키워드의 경쟁점수가 안 좋아요 — 아래 '키워드 분석'에서 다른 후보와 비교해 보세요">
+            📉 경쟁 심함
+          </span>
+        )}
       </div>
       <ul className="list-disc pl-4 text-gray-600">
         {s.reasons.map((r) => (
@@ -55,6 +129,7 @@ function ChannelEvidence({ s }: { s: ChannelTopicSignals }) {
         {s.ai?.caution ? <p className="text-gray-500">주의: {s.ai.caution}</p> : null}
         <p className="mt-1 text-gray-400">수집 {new Date(s.collectedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</p>
       </details>
+      {s.longtail && s.longtail.candidates.length > 0 && <KeywordAnalysis lt={s.longtail} />}
     </div>
   );
 }

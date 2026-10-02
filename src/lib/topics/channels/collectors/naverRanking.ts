@@ -2,18 +2,20 @@
  * 2. 네이버 랭킹 뉴스 (원본: collectors/naver_ranking.py)
  *  - entertain : 엔터 '많이 본 뉴스' — 조회수가 표시되는 유일한 순위
  *  - press     : 뉴스 랭킹(종합) — 언론사별 '많이 본 뉴스' 상위 5건. 여러 언론사에 동시에 오르면 '큰 이슈' 신호
- *  - section   : 섹션 페이지 헤드라인
+ *  - section   : 섹션 페이지 헤드라인 (기사 시각이 없어 클러스터 생성 시각을 나이로 씀)
+ *  - latest    : 세부 섹션(여행/레저·음식/맛집 등) 최신 기사 — 인기순이 아니라 채널 수에는 안 셈. 카테고리 신호용 보조 자료
  * 각 항목의 extra.kind 는 ent_rank / press_rank / section_headline 이며 점수에서 종류별로 다르게 씁니다.
  * (원본의 상위 기사 본문 분량·사진 수 분석은 점수에 쓰이지 않아 옮기지 않았습니다)
  */
-import { clean, parseAgoMinutes, parseCount } from "../text";
+import { clean, clusterAgeMinutes, parseAgeMinutes, parseCount } from "../text";
+import { pickCategory } from "../filters";
 import type { ChannelItem, ChannelResult } from "../types";
 import { dump, emptyResult, firstLine, goto, openPage, run, type CollectContext } from "./common";
 import { NAVER_RANKING_ENTERTAIN, NAVER_RANKING_PRESS, NAVER_RANKING_SECTION } from "./scripts";
 
 type EntRow = { url: string; title: string; views: string; desc: string; rank: string; order: number };
 type PressRow = { press: string; url: string; title: string; rank: number | null; time: string };
-type SecRow = { kind: string; url: string; title: string; press: string; time: string; order: number };
+type SecRow = { kind: string; url: string; title: string; press: string; time: string; order: number; cluster?: string; clusterNum?: string };
 
 const ART_RE = /article\/(\d{3})\/(\d{6,12})/;
 
@@ -65,7 +67,7 @@ export function pressItems(rows: PressRow[], name: string, category: string, pre
       rank: r.rank,
       category,
       press: r.press ?? "",
-      ageMinutes: parseAgoMinutes(r.time),
+      ageMinutes: parseAgeMinutes(r.time),
       extra: { kind: "press_rank" },
     }));
 }
@@ -77,19 +79,27 @@ export function sectionItems(data: { headline: SecRow[]; latest: SecRow[] }, nam
     title: clean(r.title),
     url: r.url,
     rank: i + 1,
-    category,
+    category: pickCategory(r.title, category),
     press: r.press ?? "",
-    ageMinutes: parseAgoMinutes(r.time),
+    ageMinutes: parseAgeMinutes(r.time) ?? clusterAgeMinutes(r.cluster),
+    clusterSize: r.clusterNum && /^\d+$/.test(r.clusterNum) ? Number(r.clusterNum) : null,
     extra: { kind: "section_headline" },
   }));
   if (includeLatest) {
     const seen = new Set(out.map((i) => i.url));
     for (const [i, r] of (data.latest ?? []).entries()) {
       if (seen.has(r.url)) continue;
-      out.push({ channel: SOURCE, source: `${name} 최신`, title: clean(r.title), url: r.url, rank: i + 1, category, press: r.press ?? "", ageMinutes: parseAgoMinutes(r.time), extra: { kind: "section_latest" } });
+      out.push({ channel: SOURCE, source: `${name} 최신`, title: clean(r.title), url: r.url, rank: i + 1, category: pickCategory(r.title, category), press: r.press ?? "", ageMinutes: parseAgeMinutes(r.time), extra: { kind: "section_latest" } });
     }
   }
   return out;
+}
+
+/** 세부 섹션 최신 기사 상위 max 건 (카테고리 신호용 — kind=section_latest) */
+export function latestItems(data: { headline: SecRow[]; latest: SecRow[] }, name: string, category: string, max: number): ChannelItem[] {
+  return dedupe(data.latest ?? [])
+    .slice(0, max)
+    .map((r, i) => ({ channel: SOURCE, source: name, title: clean(r.title), url: r.url, rank: i + 1, category: pickCategory(r.title, category), press: r.press ?? "", ageMinutes: parseAgeMinutes(r.time), extra: { kind: "section_latest" } }));
 }
 
 export async function collectNaverRanking(ctx: CollectContext): Promise<ChannelResult> {
@@ -107,7 +117,9 @@ export async function collectNaverRanking(ctx: CollectContext): Promise<ChannelR
             ? entertainItems((await run<EntRow[]>(page, NAVER_RANKING_ENTERTAIN)) ?? [], pg.name, pg.category)
             : type === "press"
               ? pressItems((await run<PressRow[]>(page, NAVER_RANKING_PRESS)) ?? [], pg.name, pg.category, cfg.pressRankMax)
-              : sectionItems((await run<{ headline: SecRow[]; latest: SecRow[] }>(page, NAVER_RANKING_SECTION)) ?? { headline: [], latest: [] }, pg.name, pg.category, cfg.includeLatest);
+              : type === "latest"
+                ? latestItems((await run<{ headline: SecRow[]; latest: SecRow[] }>(page, NAVER_RANKING_SECTION)) ?? { headline: [], latest: [] }, pg.name, pg.category, cfg.latestMax)
+                : sectionItems((await run<{ headline: SecRow[]; latest: SecRow[] }>(page, NAVER_RANKING_SECTION)) ?? { headline: [], latest: [] }, pg.name, pg.category, cfg.includeLatest);
         if (!items.length) {
           res.notes.push(`${pg.name}: 기사 0건 (storage/channels/debug 확인)`);
           await dump(ctx, page, `naver_ranking_${pg.name}`, true);

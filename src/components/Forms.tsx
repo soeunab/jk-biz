@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Spinner, waitJobs } from "./ActionButton";
 import { CATEGORY_CHOICES } from "@/lib/topics/channels/config";
-import { NO_RESTRICTION } from "@/lib/topics/channels/filters";
+import { AI_FOCUS_TERMS, NO_RESTRICTION } from "@/lib/topics/channels/filters";
 import type { ChannelId } from "@/lib/topics/channels/types";
 
 type AccountOpt = { id: string; name: string; platform: string };
@@ -107,17 +107,20 @@ export function ChannelDiscoverForm() {
   const [domain, setDomain] = useState("");
   const [limit, setLimit] = useState(10);
   const [channels, setChannels] = useState<ChannelId[]>(CHANNEL_OPTIONS.map(([c]) => c));
+  const [aiFocus, setAiFocus] = useState(false);
+  const [focus, setFocus] = useState("");
   return (
     <form
       className="card grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end"
       onSubmit={(e) => {
         e.preventDefault();
-        submit("/api/topics/discover-channels", { category, domain, limit, channels });
+        const focusTerms = [...(aiFocus ? AI_FOCUS_TERMS : []), ...focus.split(",").map((t) => t.trim()).filter(Boolean)];
+        submit("/api/topics/discover-channels", { category, domain, limit, channels, focusTerms });
       }}
     >
       <p className="text-xs text-gray-500 md:col-span-3">
         지금 여러 채널에서 동시에 화제인 소재를 찾아 같은 사건끼리 묶고, 참여 채널 수·신선도·랭킹·트렌드 급등률로 점수를 매겨요. 부정 사건·정치 이슈는 제외하고,
-        고른 카테고리에 맞는 소재만 저장합니다. 수집에 3~5분 걸려요.
+        고른 카테고리에 맞는 소재만 저장합니다. 6시간 넘은 기사는 빼고, 이미 저장한 소재·같은 사건은 건너뛰어요. 수집에 4~6분 걸려요.
       </p>
       <div>
         <label className="label">블로그 카테고리 (네이버 32개)</label>
@@ -136,6 +139,19 @@ export function ChannelDiscoverForm() {
         <label className="label">블로그 주제 설명 (선택 — 비우면 카테고리 기준. AI 가 제목·구성안을 이 주제에 맞춰요)</label>
         <input className="input" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="예: 경제·생활 혜택 정보 (AI 도구와 무관, 정확한 사실 기반 생활 정보 블로그)" />
       </div>
+      <div className="flex flex-wrap items-center gap-3 md:col-span-3">
+        <label className="flex cursor-pointer items-center gap-1 text-sm">
+          <input type="checkbox" checked={aiFocus} onChange={(e) => setAiFocus(e.target.checked)} />
+          🤖 AI 관련 소재만
+        </label>
+        <input
+          className="input flex-1"
+          value={focus}
+          onChange={(e) => setFocus(e.target.value)}
+          placeholder="관심 단어 (쉼표로 구분, 선택) — 제목에 이 중 하나라도 있는 소재만 추천. 분류가 달라도 이 카테고리 소재로 봐요"
+        />
+      </div>
+      {aiFocus && <p className="-mt-2 text-xs text-gray-500 md:col-span-3">AI 관련 단어: {AI_FOCUS_TERMS.join(", ")}</p>}
       <div className="flex flex-wrap gap-2 md:col-span-3">
         {CHANNEL_OPTIONS.map(([c, label]) => (
           <label key={c} className={`cursor-pointer rounded-lg border px-2 py-1 text-xs ${channels.includes(c) ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-200"}`}>

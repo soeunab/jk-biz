@@ -38,6 +38,14 @@ const ConcernResolutionSchema = z.object({
       before: z.string().optional(),
       after: z.string().optional(),
       note: z.string().describe("확인됐으면 근거·출처, 확인 못했으면 왜 못했는지(예: 게재 시점 실시간 계산 필요, 원문 자료 비공개 등)"),
+      retryable: z
+        .boolean()
+        .describe(
+          "resolved=false 일 때만: 나중에 다시 웹 검색하면 확인될 가능성이 있으면 true(아직 공식 발표 전인 수치 등). " +
+            "애초에 웹 검색 대상이 아니거나(링크 직접 클릭, 이미지 교체, 다른 글과 대조 등 사람만 할 수 있는 작업) " +
+            "구조적으로 영구히 비공개인 정보면 false — false 로 표시한 건 다음 검수부터 다시 조사하지 않습니다.",
+        )
+        .default(true),
     }),
   ),
 });
@@ -73,6 +81,9 @@ async function resolveConcerns(
 - 조사 결과 원문이 틀렸으면 field(sections.N.body 등)·before(원문 그대로)·after 를 채우고 resolved=true.
 - 조사 결과 원문이 이미 맞았으면 field 는 비우고 resolved=true, note 에 확인 근거만 적으세요.
 - 이번 조사로도 확인 못했으면 resolved=false, note 에 왜 못했는지 적으세요(예: 게재 시점 실시간 수치라 지금은 계산 불가).
+- resolved=false 면 retryable 도 반드시 정하세요: "링크를 직접 클릭해 보세요", "이미지를 교체하세요", "기존 글과 대조하세요" 처럼
+  애초에 사람이 손으로 해야 하는 일이면 retryable=false(다음부터 재조사 안 함). 아직 공식 발표 전이라 지금은 못 찾았지만
+  나중에 찾아질 수 있는 사실이면 retryable=true.
 concerns 배열의 모든 항목에 대해 하나씩 답하세요.`,
     prompt: `[확인 필요 목록]\n${concerns.map((c, i) => `${i}: ${c}`).join("\n")}\n\n[방금 조사한 내용]\n${followUp.notes}\n[출처]\n${followUp.sources.map((s) => `- ${s.title}: ${s.url}`).join("\n") || "(없음)"}\n\n[원고 JSON]\n${JSON.stringify(m)}`,
     schema: ConcernResolutionSchema,
@@ -86,10 +97,12 @@ concerns 배열의 모든 항목에 대해 하나씩 답하세요.`,
         before: undefined as string | undefined,
         after: undefined as string | undefined,
         note: "데모 모드 — 추가 조사 없음",
+        retryable: true,
       })),
     }),
   });
 
+  const ANNOTATION_RE = / \((?:추가 조사|사람이 직접 처리):.*$/s;
   const changes: z.infer<typeof ReviewSchema>["changes"] = [];
   // 입력과 같은 길이·순서 유지 — null 이면 해결(수정했거나 이미 맞았음 확인), 문자열이면 아직 확인 필요
   const remaining: (string | null)[] = concerns.map((c) => c); // 모델이 빠뜨린 항목은 원래 문구 그대로(안전 기본값)
@@ -101,11 +114,19 @@ concerns 배열의 모든 항목에 대해 하나씩 답하세요.`,
     } else if (r.resolved) {
       remaining[r.concernIndex] = null; // 원문이 이미 맞았던 것 확인 — 목록에서 제거
     } else {
-      remaining[r.concernIndex] = `${concerns[r.concernIndex]} (추가 조사: ${r.note})`;
+      // 이전 회차에서 이미 "(추가 조사: …)"/"(사람이 직접 처리: …)"가 붙어 있었다면 그걸 떼고 이번 회차 결과로만 다시 붙임
+      // — 안 그러면 다시 돌릴 때마다 계속 늘어나기만 함
+      const base = concerns[r.concernIndex].replace(ANNOTATION_RE, "");
+      // retryable=false(사람만 할 수 있는 일)는 다른 문구로 표시 — runAiReview 가 다음 회차부터 이 표시가 있으면
+      // 아예 재조사 목록에 넣지 않아서, 영원히 못 풀 항목에 매번 웹검색을 또 쓰지 않게 함
+      remaining[r.concernIndex] = r.retryable ? `${base} (추가 조사: ${r.note})` : `${base} (사람이 직접 처리: ${r.note})`;
     }
   }
   return { changes, remaining };
 }
+
+/** resolveConcerns 가 "사람만 할 수 있는 일"로 표시해 둔 항목 — 다음 검수부터 재조사 대상에서 뺌 */
+const NON_RETRYABLE_MARK = "(사람이 직접 처리:";
 
 export async function runAiReview(postId: string, ctx?: JobContext) {
   const post = await db.post.findUniqueOrThrow({ where: { id: postId } });
@@ -148,11 +169,26 @@ export async function runAiReview(postId: string, ctx?: JobContext) {
   // "사람이 확인하세요"로 넘기기 전에, 그 항목들도 실제로 한 번 더 검색해서 확인 가능한 만큼은 AI 가 직접 해결합니다.
   // 원고 작성 때 글쓴이 AI 가 남긴 reviewChecklist(사람 검수 체크리스트)도 같이 넘겨서, 같은 사실을
   // "AI 검수 확인 필요"와 "사람 검수 체크리스트" 두 곳에 중복으로 남기지 않게 합니다.
-  const pool = [...result.concerns, ...m.reviewChecklist];
+  // 이전 회차에서 이미 "사람만 할 수 있는 일"로 판정된 항목은 또 웹검색을 시키지 않고 그대로 둠(토큰 낭비 방지).
+  const retryableChecklist = m.reviewChecklist.filter((c) => !c.includes(NON_RETRYABLE_MARK));
+  const skippedChecklist = m.reviewChecklist.filter((c) => c.includes(NON_RETRYABLE_MARK));
+  const pool = [...result.concerns, ...retryableChecklist];
   const resolved = await resolveConcerns(m, platformName, pool, ctx);
-  const concerns = resolved.remaining.slice(0, result.concerns.length).filter((c): c is string => c != null);
-  const reviewChecklist = resolved.remaining.slice(result.concerns.length).filter((c): c is string => c != null);
-  const finalReview = { ...result, changes: [...result.changes, ...resolved.changes], concerns };
+  const reviewChecklist = [...resolved.remaining.slice(result.concerns.length).filter((c): c is string => c != null), ...skippedChecklist];
+  if (skippedChecklist.length) await ctx?.log(`체크리스트 ${skippedChecklist.length}건은 사람만 할 수 있는 일로 이미 확인돼 재조사 안 함`);
+
+  // 검수 모델이 "원문 그대로"를 지키라는 지시를 따르지 않고 요약·의역한 before 를 줄 때가 있어 —
+  // 사람이 체크해서 "적용"을 눌러도 원문에서 못 찾아 실패하는 제안을 미리 걸러내고, 확인 필요로 돌림
+  // (정보 자체는 버리지 않고 concerns 로 옮김).
+  const allChanges = [...result.changes, ...resolved.changes];
+  const verifiedChanges: typeof allChanges = [];
+  const unverifiable: string[] = [];
+  for (const c of allChanges) {
+    if (currentTextAt(m, c.field)?.includes(c.before)) verifiedChanges.push(c);
+    else unverifiable.push(`${c.field}: "${c.before}" → "${c.after}" (검수 모델이 준 원문 인용이 실제 원고와 달라 자동 적용을 걸렀어요 — ${c.evidence})`);
+  }
+  const concerns = [...resolved.remaining.slice(0, result.concerns.length).filter((c): c is string => c != null), ...unverifiable];
+  const finalReview = { ...result, changes: verifiedChanges, concerns };
 
   const review: AiReview = { ...finalReview, at: new Date().toISOString(), applied: [] };
   await db.post.update({
