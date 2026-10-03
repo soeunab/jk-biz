@@ -37,8 +37,8 @@ export const DEFAULT_CHANNEL_CONFIG = {
   nate: { keywordUrl: "https://www.nate.com/", pannUrl: "https://pann.nate.com/" },
   googleTrends: {
     hours: 24,
-    /** 이 시간 이내에 시작된 키워드는 '초신선' */
-    freshHours: 4,
+    /** 이 시간 이내에 시작된 키워드는 '초신선' — 실시간 발굴 신선도 기준(6시간)과 맞춤 (원본은 4) */
+    freshHours: 6,
     /** 검색량 증가율이 이 값 이상이면 '당일 즉시 소재' */
     instantPct: 1000,
     /** 구글 트렌드 카테고리 ID → 네이버 블로그 카테고리 ("" = 기사별 키워드 분류에 맡김) */
@@ -142,6 +142,7 @@ export type ChannelConfig = typeof DEFAULT_CHANNEL_CONFIG;
 /** 원본 동작 (동등성 테스트용) — 개선 스위치를 전부 끔 */
 export const ORIGINAL_CHANNEL_CONFIG: ChannelConfig = {
   ...DEFAULT_CHANNEL_CONFIG,
+  googleTrends: { ...DEFAULT_CHANNEL_CONFIG.googleTrends, freshHours: 4 },
   tuning: { strictArticleGrouping: false, newestAgeAllChannels: false, latestNotChannel: false, weightedClassify: false },
 };
 export type Weights = ChannelConfig["scoring"];

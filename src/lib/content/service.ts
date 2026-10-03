@@ -5,6 +5,7 @@ import { enqueue, type JobContext } from "../jobs/queue";
 import { buildPostImages } from "../images/pipeline";
 import { asObject, ymd } from "../util";
 import { generateManuscript } from "./generate";
+import { imageSize } from "../images/size";
 import { manuscriptText, renderBlogger, renderNaverPreview, renderNaverSegments, type RenderImage, type RenderOptions } from "./render";
 import { auditManuscript } from "./seo";
 import { similarity, SIMILARITY_WARN } from "./similarity";
@@ -254,6 +255,8 @@ export async function rerenderPost(postId: string, opts: { forPublish?: boolean;
       alt: a.alt,
       caption: slotInfo?.caption ?? "",
       credit: a.credit,
+      // 블로거 '아주 크게' 형식에 원본 비율이 필요 — 저장된 값이 없으면 파일 머리말에서 읽음
+      ...(a.width && a.height ? { width: a.width, height: a.height } : ((await imageSize(a.localPath)) ?? {})),
     });
   }
   const ro: RenderOptions = {

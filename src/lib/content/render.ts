@@ -3,7 +3,7 @@ import type { Brand } from "../brand";
 import { escapeHtml } from "../util";
 import { PLACEHOLDER_RE, type Manuscript } from "./types";
 
-export type RenderImage = { slot: string; src: string; localPath?: string; alt: string; caption?: string; credit?: string };
+export type RenderImage = { slot: string; src: string; localPath?: string; alt: string; caption?: string; credit?: string; width?: number | null; height?: number | null };
 export type RenderProduct = { id: string; name: string; url: string; program: string; price?: number | null };
 
 export type RenderOptions = {
@@ -52,25 +52,39 @@ export function applyPlaceholders(html: string, mode: "highlight" | "strip" = "s
   return html.replace(/<p>\s*\[경험 추가:[^\]]*\]\s*<\/p>/g, "").replace(PLACEHOLDER_RE, "");
 }
 
-function riskBox(o: RenderOptions) {
-  if (!o.riskDisclaimers?.length) return "";
-  return `<div style="border:1px solid #fecaca;background:#fef2f2;border-radius:10px;padding:10px 14px;margin:16px 0;font-size:14px;color:#7f1d1d;">${o.riskDisclaimers
-    .map((d) => `<p style="margin:2px 0;">⚠️ ${escapeHtml(d)}</p>`)
-    .join("")}</div>`;
-}
-
 const md = (s: string) => marked.parse(s, { async: false, gfm: true, breaks: true }) as string;
 
-function imageFigure(img: RenderImage | undefined, style = "") {
-  if (!img) return "";
-  return `<figure style="margin:24px 0;text-align:center;${style}"><img src="${escapeHtml(img.src)}" alt="${escapeHtml(img.alt)}" loading="lazy" style="max-width:100%;height:auto;border-radius:12px;" />${
-    img.caption || img.credit
-      ? `<figcaption style="font-size:13px;color:#6b7280;margin-top:6px;">${escapeHtml(img.caption ?? "")}${img.credit ? ` <span style="opacity:.7">(${escapeHtml(img.credit)})</span>` : ""}</figcaption>`
-      : ""
-  }</figure>`;
+/** 블로거 편집기 '아주 크게'(가로 640)와 같은 표시 폭 */
+export const BLOGGER_XL_WIDTH = 640;
+
+/**
+ * 블로거 편집기가 '아주 크게 + 가운데'로 넣는 것과 같은 형식 (직접 올린 글의 이미지와 동일 구조).
+ * 편집 화면에서 크기·정렬이 그대로 인식되고, 대체 텍스트(alt)·제목 텍스트(title)가 이미지 속성에 들어갑니다.
+ * 캡션·출처가 있으면 블로거의 캡션 표(tr-caption-container) 형식.
+ */
+export function bloggerImage(img: RenderImage | undefined): string {
+  if (!img?.src) return "";
+  const src = escapeHtml(img.src);
+  const alt = escapeHtml(img.alt);
+  const title = escapeHtml(img.caption || img.alt);
+  const dims =
+    img.width && img.height
+      ? ` data-original-height="${img.height}" data-original-width="${img.width}" height="${Math.round((BLOGGER_XL_WIDTH * img.height) / img.width)}"`
+      : "";
+  const tag = `<img alt="${alt}" border="0"${dims} src="${src}" title="${title}" width="${BLOGGER_XL_WIDTH}" />`;
+  const caption = [img.caption, img.credit ? `(${img.credit})` : ""].filter(Boolean).join(" ");
+  if (!caption)
+    return `<div class="separator" style="clear: both; text-align: center;"><a href="${src}" style="margin-left: 1em; margin-right: 1em;">${tag}</a></div>`;
+  return `<table align="center" cellpadding="0" cellspacing="0" class="tr-caption-container" style="margin-left: auto; margin-right: auto;"><tbody><tr><td style="text-align: center;"><a href="${src}" style="margin-left: auto; margin-right: auto;">${tag}</a></td></tr><tr><td class="tr-caption" style="text-align: center;">${escapeHtml(caption)}</td></tr></tbody></table>`;
 }
 
-function tableHtml(t: { headers: string[]; rows: string[][] }) {
+// ---------------------------------------------------------------- 구글 블로거 (jw-post 디자인)
+// 블로거 테마(jettheme)에 넣어 둔 '지원포유 글 디자인(jw-post) v3' CSS 클래스로만 꾸밉니다 — 색·여백을 원고에 직접 쓰지 않아
+// 테마의 다크 모드·모바일 규칙이 그대로 적용되고, 디자인을 바꿀 땐 테마 CSS 만 고치면 됩니다.
+// 네이버 원고(renderNaverSegments)는 이 형식을 쓰지 않습니다.
+
+/** 네이버용 표 — 네이버 에디터는 외부 CSS 가 없어 인라인 스타일 그대로 (블로거 jw-post 와 별개) */
+function naverTableHtml(t: { headers: string[]; rows: string[][] }) {
   const th = t.headers.map((h) => `<th style="border:1px solid #e5e7eb;padding:8px 10px;background:#f3f4f6;">${escapeHtml(h)}</th>`).join("");
   const rows = t.rows
     .map((r) => `<tr>${r.map((c) => `<td style="border:1px solid #e5e7eb;padding:8px 10px;">${escapeHtml(c)}</td>`).join("")}</tr>`)
@@ -78,10 +92,22 @@ function tableHtml(t: { headers: string[]; rows: string[][] }) {
   return `<div style="overflow-x:auto;margin:16px 0;"><table style="border-collapse:collapse;width:100%;font-size:15px;"><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+function tableHtml(t: { headers: string[]; rows: string[][] }) {
+  const th = t.headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("");
+  const rows = t.rows.map((r) => `<tr>${r.map((c) => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`).join("");
+  return `<table class="jw-table"><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+/** 마크다운 본문 → jw-post 클래스 (목록·표·본문 링크) */
+function jwMd(s: string): string {
+  return md(s)
+    .replace(/<ul>/g, '<ul class="jw-list">')
+    .replace(/<table>/g, '<table class="jw-table">')
+    .replace(/<a href=/g, '<a class="jw-ilink" href=');
+}
+
 function productBox(prod: RenderProduct, sentence: string, anchor: string) {
-  return `<div style="border:1px solid #fde68a;background:#fffbeb;border-radius:12px;padding:14px 16px;margin:20px 0;">
-<p style="margin:0 0 6px;">${escapeHtml(sentence)}</p>
-<p style="margin:0;"><a href="${escapeHtml(prod.url)}" target="_blank" rel="sponsored noopener">👉 ${escapeHtml(anchor || prod.name)}${prod.price ? ` (${prod.price.toLocaleString("ko-KR")}원)` : ""}</a></p></div>`;
+  return `<div class="jw-note"><p>${escapeHtml(sentence)}</p><p><a class="jw-ilink" href="${escapeHtml(prod.url)}" target="_blank" rel="sponsored noopener">👉 ${escapeHtml(anchor || prod.name)}${prod.price ? ` (${prod.price.toLocaleString("ko-KR")}원)` : ""}</a></p></div>`;
 }
 
 function adsenseUnit(ad?: RenderOptions["adsense"]) {
@@ -91,7 +117,10 @@ function adsenseUnit(ad?: RenderOptions["adsense"]) {
 
 const anchorId = (i: number) => `sec-${i + 1}`;
 
-/** 구글 블로거용 HTML — TOC, 구조화 데이터(Article/FAQPage), 애드센스 인아티클 슬롯 포함 */
+/**
+ * 구글 블로거용 HTML — jw-post 디자인 + 구조화 데이터(Article/FAQPage) + 애드센스 인아티클 슬롯.
+ * 목차는 테마의 자동 목차(autoTOC, 위치 = noscript 태그)가 만들도록 &lt;noscript&gt; 자리만 둡니다.
+ */
 export function renderBlogger(m: Manuscript, o: RenderOptions): string {
   const img = (slot: string) => o.images.find((i) => i.slot === slot);
   const products = new Map((o.products ?? []).map((p) => [p.id, p]));
@@ -99,30 +128,22 @@ export function renderBlogger(m: Manuscript, o: RenderOptions): string {
   const midIndex = Math.floor(m.sections.length / 2);
   const out: string[] = [];
 
-  if (hasAffiliate) out.push(`<p style="font-size:13px;color:#6b7280;">※ ${escapeHtml(o.brand.disclosure.affiliate)}</p>`);
-  out.push(imageFigure(img("thumbnail")));
-  out.push(
-    `<div style="border-left:4px solid #2563eb;background:#eff6ff;padding:14px 18px;border-radius:8px;margin:16px 0;"><p style="margin:0;font-weight:600;">${escapeHtml(m.directAnswer)}</p></div>`,
-  );
-  out.push(
-    `<div style="background:#f9fafb;border-radius:12px;padding:14px 18px;margin:16px 0;"><p style="margin:0 0 6px;font-weight:700;">📌 핵심 요약</p><ul style="margin:0;padding-left:20px;">${m.tldr.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul></div>`,
-  );
-  out.push(riskBox(o));
-  out.push(md(m.intro));
+  if (hasAffiliate) out.push(`<p class="jw-legend">※ ${escapeHtml(o.brand.disclosure.affiliate)}</p>`);
+  out.push(bloggerImage(img("thumbnail")));
+  out.push(`<p class="jw-lead">${escapeHtml(m.directAnswer)}</p>`);
+  out.push(jwMd(m.intro));
+  out.push(`<div class="jw-summary"><p class="jw-title">먼저 결론만</p><ul>${m.tldr.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul></div>`);
+  if (o.riskDisclaimers?.length) out.push(`<div class="jw-todo">${o.riskDisclaimers.map((d) => `<p>⚠️ ${escapeHtml(d)}</p>`).join("")}</div>`);
+  out.push("<noscript></noscript>"); // 테마 자동 목차 위치
   out.push(adsenseUnit(o.adsense));
-  out.push(
-    `<nav style="border:1px solid #e5e7eb;border-radius:12px;padding:12px 18px;margin:20px 0;"><p style="margin:0 0 6px;font-weight:700;">목차</p><ol style="margin:0;padding-left:20px;">${m.sections
-      .map((s, i) => (s.level !== 3 ? `<li><a href="#${anchorId(i)}">${escapeHtml(s.heading)}</a></li>` : ""))
-      .join("")}<li><a href="#faq">자주 묻는 질문</a></li></ol></nav>`,
-  );
 
   m.sections.forEach((s, i) => {
     const h = s.level === 3 ? 3 : 2;
     out.push(`<h${h} id="${anchorId(i)}">${escapeHtml(s.heading)}</h${h}>`);
-    if (s.image) out.push(imageFigure(img(s.image.slot)));
-    out.push(md(s.body));
+    if (s.image) out.push(bloggerImage(img(s.image.slot)));
+    out.push(jwMd(s.body));
     if (s.table) out.push(tableHtml(s.table));
-    if (s.tip) out.push(`<p style="background:#ecfdf5;border-radius:8px;padding:10px 14px;">💡 <b>꿀팁</b> ${escapeHtml(s.tip)}</p>`);
+    if (s.tip) out.push(`<div class="jw-note"><p>💡 <strong>꿀팁</strong> ${escapeHtml(s.tip)}</p></div>`);
     for (const a of m.affiliate.filter((a) => a.afterSection === i + 1)) {
       const prod = products.get(a.productId);
       if (prod) out.push(productBox(prod, a.sentence, a.anchorText));
@@ -131,23 +152,24 @@ export function renderBlogger(m: Manuscript, o: RenderOptions): string {
   });
 
   if (o.sourceLink && !manuscriptHasSourceToken(m)) out.push(sourceLinkParagraph(o));
-  out.push(`<h2 id="faq">자주 묻는 질문 (FAQ)</h2>`);
-  for (const f of m.faq) out.push(`<h3>Q. ${escapeHtml(f.q)}</h3><p>${escapeHtml(f.a)}</p>`);
-  out.push(`<h2>마무리</h2>`, md(m.conclusion), `<p><b>${escapeHtml(m.cta)}</b></p>`);
+  out.push(`<h2 id="faq">자주 묻는 질문</h2>`);
+  out.push(`<div class="jw-faq">${m.faq.map((f) => `<p class="jw-q">Q. ${escapeHtml(f.q)}</p><p class="jw-a">${escapeHtml(f.a)}</p>`).join("")}</div>`);
+  out.push(`<h2>마무리</h2>`, jwMd(m.conclusion), `<p class="jw-closing"><strong>${escapeHtml(m.cta)}</strong></p>`);
 
   if (m.sources.length) {
     out.push(
-      `<div style="font-size:14px;color:#4b5563;margin-top:24px;"><p style="margin:0 0 4px;font-weight:700;">참고 자료</p><ul style="margin:0;padding-left:20px;">${m.sources
-        .map((s) => `<li><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.title)}</a></li>`)
+      `<div class="jw-note"><p><strong>참고 자료</strong></p><ul class="jw-list">${m.sources
+        .map((s) => `<li><a class="jw-ilink" href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.title)}</a></li>`)
         .join("")}</ul></div>`,
     );
   }
   const date = (o.publishedAt ?? new Date()).toISOString().slice(0, 10);
   out.push(
-    `<div style="border-top:1px solid #e5e7eb;margin-top:28px;padding-top:14px;font-size:14px;color:#4b5563;"><b>작성·검수: ${escapeHtml(o.brand.authorName)}</b> — ${escapeHtml(o.brand.authorBio)}<br/>최종 업데이트: ${date}<br/><span style="font-size:12px;">${escapeHtml(o.brand.disclosure.ai)}</span></div>`,
+    `<p class="jw-meta"><span>작성·검수: ${escapeHtml(o.brand.authorName)}</span><span>최종 업데이트: ${date}</span></p>`,
+    `<p class="jw-legend">${escapeHtml(o.brand.authorBio)}<br/>${escapeHtml(o.brand.disclosure.ai)}</p>`,
   );
-  out.push(jsonLd(m, o, date));
-  return applySourceLink(applyPlaceholders(out.filter(Boolean).join("\n"), o.placeholders), o);
+  const body = applySourceLink(applyPlaceholders(out.filter(Boolean).join("\n"), o.placeholders), o);
+  return `<div class="jw-post">\n${body}\n</div>\n${jsonLd(m, o, date)}`;
 }
 
 function jsonLd(m: Manuscript, o: RenderOptions, date: string) {
@@ -250,8 +272,8 @@ export function renderNaverSegments(m: Manuscript, o: RenderOptions): NaverSegme
     else pushHeading(s.heading);
     if (s.image) pushImage(s.image.slot);
     buf.push(simpleMd(s.body));
-    // 표는 공통 tableHtml() 을 그대로 쓰되, 네이버는 표 안 글자 크기·색도 본문과 통일 (font-size 는 네이버가 셀 글자에 그대로 상속시킴)
-    if (s.table) buf.push(tableHtml(s.table).replace('font-size:15px;">', `font-size:16px;color:#000000;">`));
+    // 표는 네이버용 인라인 스타일 표, 표 안 글자 크기·색도 본문과 통일 (font-size 는 네이버가 셀 글자에 그대로 상속시킴)
+    if (s.table) buf.push(naverTableHtml(s.table).replace('font-size:15px;">', `font-size:16px;color:#000000;">`));
     if (s.tip) buf.push(p(`💡 <b>꿀팁</b> ${escapeHtml(s.tip)}`));
     for (const a of m.affiliate.filter((a) => a.afterSection === i + 1)) {
       const prod = products.get(a.productId);

@@ -29,7 +29,7 @@ function competitionVerdict(score: number | null): { label: string; color: strin
   return { label: "매우 나쁨(포화)", color: "text-red-700" };
 }
 
-/** 고른 키워드 말고 더 나은 롱테일 후보가 있었는지(점수 기준, 소재와 무관한 키워드일 수 있어 참고용) */
+/** 키워드를 어떻게 골랐는지: AI 가 해석한 사건·제안 검색어 → 네이버 실측 후보 → 데이터로 선택 (이전 형식 기록은 해석 없이 후보만) */
 function KeywordAnalysis({ lt }: { lt: NonNullable<ChannelTopicSignals["longtail"]> }) {
   const used = lt.candidates.find((c) => c.keyword === lt.usedKeyword);
   const sorted = [...lt.candidates].sort((a, b) => b.score - a.score);
@@ -38,6 +38,12 @@ function KeywordAnalysis({ lt }: { lt: NonNullable<ChannelTopicSignals["longtail
     <details>
       <summary className="cursor-pointer text-gray-500">🔍 키워드 분석 — 쓴 키워드 &quot;{lt.usedKeyword}&quot; ({usedVerdict.label})</summary>
       <div className="mt-1 flex flex-col gap-1">
+        {lt.story?.summary && (
+          <p className="text-gray-600">
+            {lt.story.by === "ai" ? "AI 해석" : "대표어"}: {lt.story.summary}
+            {lt.seeds?.length ? <span className="text-gray-400"> · 제안 검색어: {lt.seeds.join(", ")}</span> : null}
+          </p>
+        )}
         {used ? (
           <p className="text-gray-600">
             쓴 키워드: <b>{used.keyword}</b> · 검색량 {used.volume != null ? `월 ${formatNumber(used.volume)}` : "미확인"} · 문서수{" "}
@@ -45,13 +51,14 @@ function KeywordAnalysis({ lt }: { lt: NonNullable<ChannelTopicSignals["longtail
             <span className={usedVerdict.color}>{used.competitionScore != null ? Math.round(used.competitionScore) : "미확인"}({usedVerdict.label})</span>
           </p>
         ) : (
-          <p className="text-gray-500">쓴 키워드 &quot;{lt.usedKeyword}&quot;는 롱테일 후보 목록(자동완성 확장)에 없었어요 — AI가 수집 근거 제목의 단어를 그대로 쓴 경우예요.</p>
+          <p className="text-gray-500">쓴 키워드 &quot;{lt.usedKeyword}&quot;는 측정 후보 목록에 없어요 (이전 방식으로 저장된 소재).</p>
         )}
         <table className="text-left text-gray-600">
           <thead className="text-gray-400">
             <tr>
               <th className="pr-3 font-normal">후보 키워드</th>
               <th className="pr-3 font-normal">검색량</th>
+              <th className="pr-3 font-normal">문서수</th>
               <th className="pr-3 font-normal">경쟁점수</th>
               <th className="font-normal">선택용 점수</th>
             </tr>
@@ -68,6 +75,7 @@ function KeywordAnalysis({ lt }: { lt: NonNullable<ChannelTopicSignals["longtail
                     {lt.best === c.keyword && !isUsed && " (측정상 최고점)"}
                   </td>
                   <td className="pr-3 tabular-nums">{c.volume != null ? formatNumber(c.volume) : "미확인"}</td>
+                  <td className="pr-3 tabular-nums">{c.documentCount != null ? formatNumber(c.documentCount) : "-"}</td>
                   <td className={`pr-3 tabular-nums ${v.color}`}>{c.competitionScore != null ? Math.round(c.competitionScore) : "미확인"}</td>
                   <td className="tabular-nums">{c.score}</td>
                 </tr>
@@ -76,7 +84,7 @@ function KeywordAnalysis({ lt }: { lt: NonNullable<ChannelTopicSignals["longtail
           </tbody>
         </table>
         <p className="text-gray-400">
-          ⚠️ &quot;선택용 점수&quot;가 더 높은 후보가 있어도, 이 소재(기사 내용)와 실제로 관련 없는 일반 연관어일 수 있어요 — 제목을 바꾸기 전에 내용이 맞는지 직접 확인하세요.
+          후보는 사건을 이해한 제안 검색어와 그것을 포함한 네이버 자동완성·검색광고 확장이며, 사건 내용과 어긋나는 후보는 AI 확인으로 뺐어요. 키워드는 선택용 점수(경쟁 60%·검색량 40%)가 가장 높은 것을 골랐어요. 문서수 &quot;-&quot;는 검색량이 작아 재지 않은 후보예요.
         </p>
       </div>
     </details>
@@ -125,6 +133,19 @@ function ChannelEvidence({ s }: { s: ChannelTopicSignals }) {
             </li>
           ))}
         </ul>
+        {s.context?.length ? (
+          <>
+            <p className="mt-1 text-gray-500">실시간 검색어에 기사가 없어 맥락으로 붙인 &quot;같은 단어가 나온 기사&quot;:</p>
+            <ul className="flex flex-col gap-0.5 text-gray-600">
+              {s.context.map((e, i) => (
+                <li key={i}>
+                  <span className="text-gray-400">{e.channelLabel}:</span>{" "}
+                  {e.url ? <a className="text-indigo-600 hover:underline" href={e.url} target="_blank" rel="noreferrer">{e.title}</a> : e.title}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
         {s.ai?.outline?.length ? <p className="mt-1 text-gray-500">AI 구성안: {s.ai.outline.join(" → ")}</p> : null}
         {s.ai?.caution ? <p className="text-gray-500">주의: {s.ai.caution}</p> : null}
         <p className="mt-1 text-gray-400">수집 {new Date(s.collectedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</p>

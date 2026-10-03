@@ -132,15 +132,20 @@ export async function collectGoogleTrends(ctx: CollectContext): Promise<ChannelR
       res.notes.push(`카테고리 메뉴 조작 실패(전체 목록만 사용): ${firstLine(e)}`);
     }
 
-    // 초신선(지난 N시간) 키워드 표시
-    try {
-      await goto(page, URL(cfg.freshHours), 2200);
-      await page.waitForSelector("tr[data-row-id]", { timeout: 10_000 });
-      for (const r of await readRows(page)) {
-        const it = byKw.get(clean(r.keyword));
-        if (it) it.extra!.fresh = true;
-      }
-    } catch {}
+    // 초신선(지난 N시간) 키워드 표시 — 구글 트렌드 화면은 4·24·48·168시간 보기만 있어,
+    // 그 밖의 값(기본 6시간)은 각 키워드의 '시작 시각'으로 계산합니다.
+    if (![4, 24, 48, 168].includes(cfg.freshHours)) {
+      for (const it of byKw.values()) if (it.ageMinutes != null && it.ageMinutes <= cfg.freshHours * 60) it.extra!.fresh = true;
+    } else {
+      try {
+        await goto(page, URL(cfg.freshHours), 2200);
+        await page.waitForSelector("tr[data-row-id]", { timeout: 10_000 });
+        for (const r of await readRows(page)) {
+          const it = byKw.get(clean(r.keyword));
+          if (it) it.extra!.fresh = true;
+        }
+      } catch {}
+    }
 
     res.items = [...byKw.values()];
     res.ok = true;

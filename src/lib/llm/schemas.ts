@@ -3,6 +3,7 @@ import { ManuscriptSchema, SectionSchema } from "../content/types";
 import { ReviewSchema } from "../content/review";
 import { IdeaSchema } from "../topics/discover";
 import { ChannelCategorySchema, ChannelIdeaSchema } from "../topics/channels/discover";
+import { KeywordCheckSchema, StorySchema } from "../topics/channels/keywords";
 import { CardNewsSchema } from "../cardnews";
 import { StrategySchema } from "../insights/engine";
 
@@ -14,6 +15,8 @@ export const SCHEMAS: Record<string, z.ZodType> = {
   topicIdeas: IdeaSchema,
   channelIdeas: ChannelIdeaSchema,
   channelCategories: ChannelCategorySchema,
+  channelStories: StorySchema,
+  channelKeywordCheck: KeywordCheckSchema,
   cardnews: CardNewsSchema,
   strategy: StrategySchema,
 };

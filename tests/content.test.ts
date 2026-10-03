@@ -39,7 +39,12 @@ describe("manuscript", () => {
       adsense: { client: "ca-pub-1", slot: "123" },
     });
     expect(html).toContain('"@type":"FAQPage"');
-    expect(html).toContain("목차");
+    // jw-post 디자인 (블로거 테마 CSS 클래스) — 목차는 테마 자동 목차가 <noscript> 자리에 만듦
+    expect(html.startsWith('<div class="jw-post">')).toBe(true);
+    expect(html).toContain("<noscript></noscript>");
+    for (const cls of ["jw-lead", "jw-summary", "jw-faq", "jw-q", "jw-a", "jw-closing", "jw-meta"]) expect(html).toContain(`class="${cls}"`);
+    expect(html).not.toMatch(/<(div|p|table|nav)[^>]*style="[^"]*(background|border)/); // 색·테두리는 테마 CSS 가 담당
+    expect(html).toContain('class="separator"'); // 썸네일은 블로거 '아주 크게 + 가운데' 형식
     expect(html.match(/adsbygoogle/g)?.length).toBeGreaterThanOrEqual(2);
     expect(html).toContain(DEFAULT_BRAND.disclosure.affiliate);
     expect(html).toContain('rel="sponsored noopener"');
@@ -51,6 +56,12 @@ describe("manuscript", () => {
     m.faq[0].a = "</script><script>alert(1)</script>";
     const html = renderBlogger(m, { brand: DEFAULT_BRAND, images: [] });
     expect(html).not.toContain("</script><script>alert(1)");
+  });
+
+  it("jw-post 디자인은 블로거 원고에만 — 네이버 원고에는 안 들어감", () => {
+    const m = mockManuscript({ ...base, platform: "NAVER" });
+    const segs = renderNaverSegments(m, { brand: DEFAULT_BRAND, images: [] });
+    expect(JSON.stringify(segs)).not.toContain("jw-");
   });
 
   it("splits Naver content into text and image segments in order", () => {

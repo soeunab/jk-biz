@@ -49,3 +49,49 @@ body {
 .post-preview a { color: #2563eb; text-decoration: underline; }
 .post-preview ins.adsbygoogle { display: block !important; min-height: 60px; background: repeating-linear-gradient(45deg,#f3f4f6,#f3f4f6 8px,#e5e7eb 8px,#e5e7eb 16px); border-radius: 8px; margin: 1rem 0; }
 .post-preview ins.adsbygoogle::after { content: "애드센스 광고 영역"; display: block; text-align: center; line-height: 60px; color: #6b7280; font-size: 12px; }
+
+/*
+ * 구글 블로거 원고 미리보기 — 블로거 테마(jettheme)에 넣은 '지원포유 글 디자인(jw-post) v3' CSS 를 그대로 옮김.
+ * 테마 CSS 를 바꾸면 여기도 같이 바꿔야 미리보기와 실제 글 모양이 같습니다. (다크 모드 규칙은 미리보기에 필요 없어 뺌)
+ */
+.entry-text .jw-post{--jw-ink:#14233b;--jw-body:#2b3547;--jw-mute:#66728a;--jw-line:#dfe5ee;--jw-wash:var(--jt-bg-light,#f4f7fb);--jw-paper:#ffffff;--jw-slotline:#b9c4d6;--jw-fail:#d6404a;--jw-failwash:#fdf0f0;--jw-fix:#0d7f74;--jw-fixwash:#e9f6f4;--jw-todobg:#fff7dc;--jw-todoline:#e2bf4d;--jw-todotext:#5b4a10;--jw-link:#1f5fbf}
+.entry-text .jw-post{max-width:720px;margin:0 auto;padding:0 0 24px;color:var(--jw-body);font-family:Pretendard,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;font-size:17px;line-height:1.85;letter-spacing:-.01em;word-break:keep-all!important;overflow-wrap:break-word!important;word-wrap:break-word!important}
+.entry-text .jw-post p{margin:0 0 1.15em;padding:0;font-size:1em;line-height:inherit}
+.entry-text .jw-post strong{color:var(--jw-ink);font-weight:700}
+.entry-text .jw-post a.jw-ilink{color:var(--jw-link);text-decoration:underline;text-underline-offset:3px}
+.entry-text .jw-post h2{margin:2.7em 0 .8em;padding:1em 0 0;border:0;border-top:1px solid var(--jw-line);font-size:24px;line-height:1.42;font-weight:800;letter-spacing:-.025em;color:var(--jw-ink)}
+.entry-text .jw-post h3{margin:2em 0 .6em;padding:0;font-size:19px;line-height:1.5;font-weight:700;color:var(--jw-ink)}
+.entry-text .jw-post .jw-meta{margin:0 0 26px;font-size:14px;line-height:1.6;color:var(--jw-mute)}
+.entry-text .jw-post .jw-meta span{display:inline-block;padding:0 14px 0 0;margin:0 14px 0 0;border-right:1px solid var(--jw-line)}
+.entry-text .jw-post .jw-meta span:last-child{border-right:0;margin-right:0}
+.entry-text .jw-post .jw-lead{margin:0 0 28px;padding:2px 0 2px 18px;border-left:4px solid var(--jw-ink);font-size:18px;line-height:1.8;font-weight:500;color:var(--jw-ink)}
+.entry-text .jw-post .jw-summary{margin:0 0 20px;padding:20px 22px 8px;background:var(--jw-wash);border-radius:6px}
+.entry-text .jw-post .jw-summary p.jw-title{margin:0 0 8px;font-size:16px;font-weight:700;color:var(--jw-ink)}
+.entry-text .jw-post .jw-summary ul{margin:0;padding:0;list-style:none}
+.entry-text .jw-post .jw-summary li{position:relative;margin:0 0 12px;padding:0 0 0 22px;font-size:16px;line-height:1.7}
+.entry-text .jw-post .jw-summary li::before{content:"";position:absolute;left:2px;top:.62em;width:8px;height:8px;background:var(--jw-ink);border-radius:1px}
+.entry-text .jw-post .jw-legend{margin:0 0 2em;font-size:13.5px;line-height:1.6;color:var(--jw-mute)}
+.entry-text .jw-post .jw-note{margin:22px 0;padding:14px 18px;background:var(--jw-wash);border-radius:6px;font-size:16px;line-height:1.75}
+.entry-text .jw-post .jw-todo{margin:1.4em 0;padding:12px 16px;background:var(--jw-todobg);border-left:4px solid var(--jw-todoline);border-radius:0 4px 4px 0;font-size:15.5px;line-height:1.7;color:var(--jw-todotext)}
+.entry-text .jw-post .jw-todo strong{color:var(--jw-todotext)}
+.entry-text .jw-post .separator,.entry-text .jw-post .tr-caption-container{margin:28px 0!important}
+.entry-text .jw-post .separator a{margin:0!important;float:none!important;display:block}
+.entry-text .jw-post img{max-width:100%;height:auto;border-radius:4px}
+.entry-text .jw-post .tr-caption{font-size:13.5px;line-height:1.6;color:var(--jw-mute);text-align:center}
+.entry-text .jw-post .jw-table{width:100%;margin:22px 0;border-collapse:collapse;border:0;font-size:15.5px;line-height:1.65}
+.entry-text .jw-post .jw-table th{padding:10px 14px;text-align:left;font-weight:700;color:var(--jw-ink);background:var(--jw-wash);border:0;border-bottom:2px solid var(--jw-ink)}
+.entry-text .jw-post .jw-table td{padding:12px 14px;vertical-align:top;background:transparent;border:0;border-bottom:1px solid var(--jw-line);color:var(--jw-body)}
+.entry-text .jw-post .jw-list{margin:0 0 1.2em;padding:0 0 0 1.2em;list-style:disc}
+.entry-text .jw-post .jw-list li{margin:0 0 .6em;padding:0 0 0 .2em;font-size:1em;line-height:inherit}
+.entry-text .jw-post ol{margin:0 0 1.2em;padding:0 0 0 1.4em;list-style:decimal}
+.entry-text .jw-post .jw-faq{margin:0;border-top:1px solid var(--jw-line)}
+.entry-text .jw-post .jw-faq p.jw-q{margin:0;padding:16px 0 4px;font-weight:700;color:var(--jw-ink);line-height:1.55}
+.entry-text .jw-post .jw-faq p.jw-a{margin:0;padding:0 0 16px;border-bottom:1px solid var(--jw-line);font-size:16.5px;line-height:1.8}
+.entry-text .jw-post .jw-closing{margin:2.2em 0 0;padding:1.2em 0 0;border-top:1px solid var(--jw-line)}
+@media (max-width:600px){
+.entry-text .jw-post{font-size:16px}
+.entry-text .jw-post h2{font-size:21px}
+.entry-text .jw-post .jw-lead{font-size:16.5px}
+.entry-text .jw-post .jw-meta span{display:block;padding:0;margin:0;border-right:0}
+.entry-text .jw-post .jw-table{display:block;overflow-x:auto}
+}

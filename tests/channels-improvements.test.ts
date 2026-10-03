@@ -34,7 +34,7 @@ vi.mock("@/lib/llm", async (orig) => ({
   },
 }));
 
-import { analyzeItems, discoverFromChannels, isSeenStory, reclassifyAmbiguous, relevantCandidates, rescore, seenStories, storyRelevant } from "@/lib/topics/channels/discover";
+import { analyzeItems, discoverFromChannels, isSeenStory, reclassifyAmbiguous, rescore, seenStories } from "@/lib/topics/channels/discover";
 import { buildGroups } from "@/lib/topics/channels/crossref";
 import { DEFAULT_CHANNEL_CONFIG, ORIGINAL_CHANNEL_CONFIG } from "@/lib/topics/channels/config";
 import { AI_FOCUS_TERMS, classifyWeighted, hasWord, matchesFocus, NO_RESTRICTION, pickCategory } from "@/lib/topics/channels/filters";
@@ -139,30 +139,6 @@ describe("신선도·채널 수 (#7, #11)", () => {
   });
 });
 
-describe("롱테일 관련성 (#2, #8)", () => {
-  const g = buildGroups([trend("베트남"), art("베트남 여행 무비자 체류 45일로 확대"), art("베트남 여행객 급증에 항공권 매진")], 1.6, true)[0];
-  it("넓은 출발점('베트남')으로 확장한 후보 중 사건과 무관한 것은 제외", () => {
-    expect(storyRelevant("베트남 이심", "베트남", g)).toBe(false);
-    expect(storyRelevant("베트남 환율", "베트남", g)).toBe(false);
-    expect(storyRelevant("베트남 여행", "베트남", g)).toBe(true);
-    expect(storyRelevant("베트남 무비자", "베트남", g)).toBe(true);
-  });
-  it("구체적 출발점의 확장도 덧붙은 말이 기사에 있거나 정보 탐색형 꼬리말일 때만", () => {
-    expect(storyRelevant("베트남 여행 추천", "베트남 여행", g)).toBe(true);
-    expect(storyRelevant("베트남 여행 무비자", "베트남 여행", g)).toBe(true);
-    expect(storyRelevant("베트남 이심", "베트남 여행", g)).toBe(false);
-    expect(storyRelevant("다낭 베트남 여행", "베트남 여행", g)).toBe(false); // '평택 삼성반도체' 같은 경우
-  });
-  it("출발점 검색량이 다른 뜻에서 나온 경우(확장 대부분이 무관) 출발점도 뺌", () => {
-    const h = buildGroups([art("신한은행에 '중국어 AI 침투' 흔적…해킹 공포"), art("'중국어 AI' 흔적 정황도…은행권 해킹 사건")], 1.6, true)[0];
-    const c = (keyword: string, volume: number | null) => ({ keyword, sources: [], volume, compIdx: null, adDepth: null, documentCount: null, competitionScore: null, score: 0 });
-    const lt = { base: "중국어 AI", best: null, related: [], candidates: [c("중국어 AI", 50), c("중국어 ai튜터", 40), c("중국어 ai 스피킹", 30), c("중국어 ai어플 비교", 15), c("중국어ai추천", 10)] };
-    expect(relevantCandidates(lt, h).map((x) => x.keyword)).toEqual([]);
-    const lt2 = { ...lt, base: "베트남 여행", candidates: [c("베트남 여행", 900), c("베트남 여행 추천", 300), c("베트남 여행 무비자", 120), c("베트남 이심", 2000)] };
-    expect(relevantCandidates(lt2, g).map((x) => x.keyword)).toEqual(["베트남 여행", "베트남 여행 추천", "베트남 여행 무비자"]);
-  });
-});
-
 describe("중복 (#1)", () => {
   it("최근 저장한 소재와 근거 기사가 겹치면 같은 사건", () => {
     const g = buildGroups([art("국내 기름값 19주 연속 하락…주유소 100원 내려"), art("휘발유 가격 하락세 계속")], 1.6, true);
@@ -198,6 +174,8 @@ describe("신선도 필터 (#4)", () => {
       JSON.stringify([
         trend("단풍 명소", { ageMinutes: 600, extra: { status: "활성", related: [] } }),
         trend("추석 귀성길", { ageMinutes: 600, extra: { status: "10시간 동안 지속됨", related: [] } }),
+        // 기사 맥락이 있어야 추천 대상 (실시간 검색어 한 줄뿐인 소재는 무슨 일인지 몰라 빠짐)
+        art("단풍 명소 이번 주말 절정"),
       ]),
     );
     process.env.CHANNELS_FIXTURE = file;

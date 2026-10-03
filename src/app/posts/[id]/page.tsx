@@ -166,7 +166,8 @@ export default async function PostPage({ params, searchParams }: { params: Promi
             {tab === "preview" && (
               <article className="post-preview mx-auto max-w-3xl">
                 <h1 className="mb-4 text-3xl font-extrabold leading-tight">{m.title}</h1>
-                <div dangerouslySetInnerHTML={{ __html: post.html }} />
+                {/* 블로거 원고는 테마의 jw-post 디자인(.entry-text .jw-post)을 미리보기에도 똑같이 적용 */}
+                <div className={post.platform === "BLOGGER" ? "entry-text" : undefined} dangerouslySetInnerHTML={{ __html: post.html }} />
                 {post.platform === "NAVER" && (
                   <p className="mt-6 text-sm text-green-700">{m.tags.map((t) => `#${t}`).join(" ")}</p>
                 )}

@@ -22,6 +22,7 @@ npm run build
 npm run check:ai    # 작업별 담당 AI·Claude Code 로그인·Ollama 응답 확인 (--quick)
 npm run naver:check -- <계정ID>   # 네이버 에디터 선택자 점검 (글은 쓰지 않음)
 npm run channels:check [-- nate daum] [--save]   # 실시간 6채널 수집 점검 (DB 저장 없음)
+npm run channels:eval [-- --collect] [--verbose]  # 실시간 발굴 키워드 점수표·합격 기준 (최근 수집 원본 재평가, DB 저장 없음)
 ```
 
 ## 지켜야 할 것
@@ -51,6 +52,7 @@ npm run channels:check [-- nate daum] [--save]   # 실시간 6채널 수집 점�
 2. Playwright MCP 로 해당 URL(`channels/config.ts`)을 열어 목록 요소를 찾고, `channels/collectors/scripts.ts` 의 추출 JS 선택자를 고칩니다.
 3. `tests/fixtures/channels/pages.html` 도 새 구조로 고쳐 `npm test` 로 추출 결과를 고정한 뒤 `channels:check` 로 ✅ 확인.
 - 점수 공식·근거 문장은 원본과 동일해야 합니다. 바꿀 땐 의도적인 변경인지 확인하고 `expected.json` 과의 차이를 테스트에 명시하세요.
+- 실시간 소재의 키워드는 `channels/keywords.ts` 가 정합니다: AI 해석(무슨 일인지 + 제안 검색어) → 네이버 실측(검색량) → AI 확인(사건과 어긋나는 후보 제외) → 문서수 → 데이터로 선택. 규칙(n-gram·문자열 매칭)으로 관련성을 추측하는 방식으로 되돌리지 마세요. 키워드 로직을 바꾸면 `npm run channels:eval` 의 합격 기준으로 전후를 비교하세요.
 - 원본과 의도적으로 다르게 바꾼 동작(엄격한 묶기·가중 분류·신선도 채널 확대 등)은 `config.ts` 의 `tuning` 스위치(기본 켬)로만 넣습니다. 동등성 테스트는 `ORIGINAL_CHANNEL_CONFIG`(전부 끔)로 돌고, 개선 동작은 `tests/channels-improvements.test.ts` 가 검증합니다.
 
 ## 분석 데이터가 이상할 때

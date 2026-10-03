@@ -91,8 +91,10 @@ describe("discoverFromChannels", () => {
     const r = await discoverFromChannels({ category: "비즈니스·경제", limit: 3 }, ctx);
     expect(r).toMatchObject({ created: 3, excluded: 2 });
     // "자영업"은 참여 항목 대부분(1320·420·420분)이 6시간을 넘어 수집 단계에서 빠지고 신선한 항목(120분)
-    // 하나만 남아 채널 수·점수가 크게 줄어 3위 밖으로 밀려남 — "수도권 광역급행철도 c노선"이 그 자리로 올라옴
-    expect(created.map((t) => t.keyword)).toEqual(["고기", "국내 기름값", "수도권 광역급행철도 c노선"]);
+    // 하나만 남아 채널 수·점수가 크게 줄어 3위 밖으로 밀려남. "수도권 광역급행철도 c노선"은 실시간 검색어 한 줄뿐(기사·같은 단어 기사 없음)이라
+    // 무슨 일인지 알 수 없어 추천하지 않고, 다음 순위가 그 자리를 채움
+    expect(created.map((t) => t.keyword)).toEqual(["고기", "국내 기름값", "저축은행 자영업자"]);
+    expect(logs.some((l) => l.includes("근거가 부족해 뺀 소재") && l.includes("수도권 광역급행철도"))).toBe(true);
     const t = created[0] as Record<string, unknown> & { signals: Record<string, unknown> };
     expect(t).toMatchObject({
       origin: "channels",
@@ -122,13 +124,19 @@ describe("discoverFromChannels", () => {
   it("이미 저장된 소재는 다시 저장하지 않음", async () => {
     existing = [{ keyword: "고기", normalizedKeyword: "고기" }];
     await discoverFromChannels({ category: "비즈니스·경제", limit: 2 }, ctx);
-    expect(created.map((t) => t.keyword)).toEqual(["국내 기름값", "수도권 광역급행철도 c노선"]);
+    expect(created.map((t) => t.keyword)).toEqual(["국내 기름값", "저축은행 자영업자"]);
   });
 
   it("채널 하나만 골라도 동작 (한 채널 소재는 SUGGESTED)", async () => {
-    await discoverFromChannels({ category: "비즈니스·경제", limit: 5, channels: ["google_trends"] }, ctx);
+    await discoverFromChannels({ category: "비즈니스·경제", limit: 5, channels: ["daum"] }, ctx);
     expect(created.length).toBeGreaterThan(0);
     expect(created.every((t) => t.verification === "SUGGESTED" && t.confidence === 1)).toBe(true);
+  });
+
+  it("실시간 검색어만 있고 기사가 하나도 없으면 무슨 일인지 몰라 추천하지 않음", async () => {
+    const r = await discoverFromChannels({ category: "비즈니스·경제", limit: 5, channels: ["google_trends"] }, ctx);
+    expect(r.created).toBe(0);
+    expect(logs.some((l) => l.includes("근거가 부족해 뺀 소재"))).toBe(true);
   });
 
   it("6시간 넘은 자료는 수집 직후(교차검증 전)에 걸러져 소재 구성에 아예 안 들어감", async () => {
