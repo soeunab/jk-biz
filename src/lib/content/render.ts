@@ -1,7 +1,7 @@
-import { marked } from "marked";
+import { Marked, type Tokens } from "marked";
 import type { Brand } from "../brand";
 import { escapeHtml } from "../util";
-import { PLACEHOLDER_RE, type Manuscript } from "./types";
+import { PLACEHOLDER_RE, stripPlaceholders, type Manuscript } from "./types";
 
 export type RenderImage = { slot: string; src: string; localPath?: string; alt: string; caption?: string; credit?: string; width?: number | null; height?: number | null };
 export type RenderProduct = { id: string; name: string; url: string; program: string; price?: number | null };
@@ -44,15 +44,55 @@ function sourceLinkParagraph(o: RenderOptions) {
   return `<p>📎 이 주제를 다른 관점에서 정리한 글도 있어요: ${sourceAnchor(o)}</p>`;
 }
 
+/** 자리표시만 있는 문단 (네이버용 본문 스타일 span 포함) */
+const PLACEHOLDER_PARAGRAPH_RE = new RegExp(`<p>(?:<span[^>]*>)?\\s*(?:${PLACEHOLDER_RE.source}\\s*)+(?:</span>)?</p>`, "g");
+
 /** 자리표시 처리 — 발행본에 "[경험 추가…]" 문구가 새어 나가지 않게 합니다. */
 export function applyPlaceholders(html: string, mode: "highlight" | "strip" = "strip") {
   if (mode === "highlight") {
     return html.replace(PLACEHOLDER_RE, (m) => `<mark style="background:#fef08a;padding:2px 4px;border-radius:4px;">✍️ ${m}</mark>`);
   }
-  return html.replace(/<p>\s*\[경험 추가:[^\]]*\]\s*<\/p>/g, "").replace(PLACEHOLDER_RE, "");
+  return html.replace(PLACEHOLDER_PARAGRAPH_RE, "").replace(PLACEHOLDER_RE, "");
 }
 
-const md = (s: string) => marked.parse(s, { async: false, gfm: true, breaks: true }) as string;
+/** 링크·이미지 주소로 허용하는 형식: http(s)·mailto·문서 안 앵커(#)·상대 경로 */
+export function isSafeHref(href: string | null | undefined): boolean {
+  const h = (href ?? "").trim();
+  if (!h) return false;
+  if (/^(https?:|mailto:)/i.test(h)) return true;
+  if (h.startsWith("#")) return true;
+  // 상대 경로 — 스킴(javascript:, data:, vbscript: 등)이 없어야 함. 제어 문자·공백으로 스킴을 숨기는 경우도 막음
+  return !/^[\s\u0000-\u001f]*[a-z][a-z0-9+.-]*:/i.test(h) && !h.startsWith("//") && !/[\u0000-\u001f]/.test(h);
+}
+
+/** 원고 마크다운에 섞여도 그대로 둘 단순 서식 태그 (속성 없는 것만) */
+const ALLOWED_INLINE_HTML = /^<\/?(br|b|strong|em|i|u|sup|sub|mark)\s*\/?>$/i;
+
+/**
+ * 원고 전용 마크다운 변환기 — AI 답변·수동 붙여넣기에 섞인 HTML(스크립트·이벤트 속성)은 글자로 보이게 하고,
+ * 링크·이미지는 안전한 주소만 남깁니다. (렌더러가 직접 만드는 jw-post 표·이미지·광고 마크업과는 별개)
+ */
+const manuscriptMarked = new Marked({
+  async: false,
+  gfm: true,
+  breaks: true,
+  renderer: {
+    html(token: Tokens.HTML | Tokens.Tag) {
+      const raw = token.text ?? token.raw;
+      return ALLOWED_INLINE_HTML.test(raw.trim()) ? raw.trim() : escapeHtml(raw);
+    },
+    link(token: Tokens.Link) {
+      if (isSafeHref(token.href)) return false;
+      return this.parser.parseInline(token.tokens);
+    },
+    image(token: Tokens.Image) {
+      if (isSafeHref(token.href)) return false;
+      return escapeHtml(token.text);
+    },
+  },
+});
+
+const md = (s: string) => manuscriptMarked.parse(s) as string;
 
 /** 블로거 편집기 '아주 크게'(가로 640)와 같은 표시 폭 */
 export const BLOGGER_XL_WIDTH = 640;
@@ -174,12 +214,14 @@ export function renderBlogger(m: Manuscript, o: RenderOptions): string {
 
 function jsonLd(m: Manuscript, o: RenderOptions, date: string) {
   const thumb = o.images.find((i) => i.slot === "thumbnail");
+  // 구조화 데이터는 화면에 안 보여도 검색엔진·AI 답변에 그대로 쓰이므로 자리표시를 항상 지움
+  const t = stripPlaceholders;
   const graph = [
     {
       "@type": "BlogPosting",
-      headline: m.title,
-      description: m.metaDescription,
-      keywords: [m.focusKeyword, ...m.relatedKeywords].join(", "),
+      headline: t(m.title),
+      description: t(m.metaDescription),
+      keywords: [m.focusKeyword, ...m.relatedKeywords].map(t).filter(Boolean).join(", "),
       datePublished: date,
       dateModified: date,
       author: { "@type": "Organization", name: o.brand.authorName },
@@ -189,7 +231,7 @@ function jsonLd(m: Manuscript, o: RenderOptions, date: string) {
     },
     {
       "@type": "FAQPage",
-      mainEntity: m.faq.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })),
+      mainEntity: m.faq.map((f) => ({ "@type": "Question", name: t(f.q), acceptedAnswer: { "@type": "Answer", text: t(f.a) } })),
     },
   ];
   const json = JSON.stringify({ "@context": "https://schema.org", "@graph": graph }).replace(/</g, "\\u003c");
@@ -233,16 +275,18 @@ export function renderNaverSegments(m: Manuscript, o: RenderOptions): NaverSegme
     if (html.trim()) segs.push({ type: "html", html });
     buf = [];
   };
+  // 소제목·사진 설명은 HTML 붙여넣기가 아니라 에디터에 직접 입력되므로 자리표시를 여기서 따로 처리
+  const plain = (s: string) => (o.placeholders === "highlight" ? s : stripPlaceholders(s));
   const pushImage = (slot: string) => {
     const im = o.images.find((i) => i.slot === slot);
     if (!im?.localPath) return;
     flush();
-    segs.push({ type: "image", localPath: im.localPath, src: im.src, caption: im.caption ?? im.alt, credit: im.credit });
+    segs.push({ type: "image", localPath: im.localPath, src: im.src, caption: plain(im.caption ?? im.alt), credit: im.credit });
   };
   // 네이버 스마트에디터의 실제 "소제목" 서식(레벨 2)으로 넣을 제목 — HTML 붙여넣기는 <h2> 를 인식하지 못해 굵은 글씨로만 남기 때문에 따로 처리
   const pushHeading = (text: string) => {
     flush();
-    segs.push({ type: "heading", text });
+    segs.push({ type: "heading", text: plain(text) });
   };
   const simpleMd = (s: string) =>
     naverBodyStyled(

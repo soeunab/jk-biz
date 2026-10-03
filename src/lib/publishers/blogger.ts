@@ -4,6 +4,7 @@ import { publishImage } from "../images/host";
 import { rerenderPost } from "../content/service";
 import { authedClient } from "./google";
 import type { PublishResult } from "./types";
+import { stripPlaceholders } from "../content/types";
 
 /** 비공개(초안) 저장: 블로거 API isDraft=true — 블로그에는 보이지 않고 관리자 화면에서 검수 가능 */
 export async function bloggerSaveDraft(postId: string, log: (m: string) => unknown): Promise<PublishResult> {
@@ -23,15 +24,27 @@ export async function bloggerSaveDraft(postId: string, log: (m: string) => unkno
   });
   await log(`이미지 ${cache.size}개 공개 URL 준비`);
 
-  const requestBody = { title: rendered.manuscript.title, content: rendered.html, labels: rendered.manuscript.tags };
+  const blogId = post.account.externalId;
+  const requestBody = { title: stripPlaceholders(rendered.manuscript.title), content: rendered.html, labels: rendered.manuscript.tags };
+  if (post.remoteId) {
+    // 블로거에서 이미 공개(또는 예약)된 글이면 초안 저장으로 덮어쓰지 않음 — 승인 없이 라이브 글이 바뀌는 것 방지
+    const cur = await blogger.posts.get({ blogId, postId: post.remoteId, view: "ADMIN" });
+    if (cur.data.status && cur.data.status !== "DRAFT") {
+      throw new Error("블로거에서 이미 공개된 글이라 덮어쓰지 않았어요. 블로거 편집 화면에서 직접 수정하세요.");
+    }
+  }
   const res = post.remoteId
-    ? await blogger.posts.update({ blogId: post.account.externalId, postId: post.remoteId, requestBody })
-    : await blogger.posts.insert({ blogId: post.account.externalId, isDraft: true, requestBody });
-  await log(`블로거 초안 저장 완료 (postId=${res.data.id}). 검색 설명(메타 설명)은 블로거 편집 화면 '검색 설명'에 붙여 넣어 주세요.`);
-  return {
-    remoteId: res.data.id ?? undefined,
-    remoteUrl: `https://www.blogger.com/blog/post/edit/${post.account.externalId}/${res.data.id}`,
-  };
+    ? await blogger.posts.update({ blogId, postId: post.remoteId, requestBody })
+    : await blogger.posts.insert({ blogId, isDraft: true, requestBody });
+  await log(`블로거 초안 저장 완료 (postId=${res.data.id}). 편집 화면: ${bloggerEditUrl(blogId, res.data.id ?? "")}`);
+  await log("검색 설명(메타 설명)은 블로거 편집 화면 '검색 설명'에 붙여 넣어 주세요.");
+  // 편집 주소는 공개 주소가 아니므로 remoteUrl 로 돌려주지 않음(캐노니컬·백링크·캡션에 새는 것 방지)
+  return { remoteId: res.data.id ?? undefined };
+}
+
+/** 블로거 관리자 편집 화면 주소 (화면 링크·로그용 — 공개 주소 아님) */
+export function bloggerEditUrl(blogId: string, postId: string) {
+  return `https://www.blogger.com/blog/post/edit/${blogId}/${postId}`;
 }
 
 /** 검수 완료 후 공개 발행 */

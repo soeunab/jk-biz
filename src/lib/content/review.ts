@@ -3,7 +3,8 @@ import { z } from "zod";
 import { db } from "../db";
 import { generateJson, research } from "../llm";
 import type { JobContext } from "../jobs/queue";
-import { readManuscript, rerenderPost, researchNotesOf } from "./service";
+import { readManuscript, rerenderPost, researchNotesOf, saveIfUnchanged } from "./service";
+import { editLockedMessage, isEditLocked } from "./postStatus";
 import { ManuscriptSchema, type Manuscript } from "./types";
 
 /**
@@ -191,13 +192,16 @@ export async function runAiReview(postId: string, ctx?: JobContext) {
   const finalReview = { ...result, changes: verifiedChanges, concerns };
 
   const review: AiReview = { ...finalReview, at: new Date().toISOString(), applied: [] };
-  await db.post.update({
-    where: { id: postId },
-    data: {
+  // 검수하는 몇 분 사이 사람이 원고를 고쳤다면 제안(before 문구)이 맞지 않고 체크리스트 저장이 수정을 덮어씀 — 적용하지 않음
+  try {
+    await saveIfUnchanged(postId, post.updatedAt, {
       aiReview: review as unknown as Prisma.InputJsonValue,
       ...(reviewChecklist.length !== m.reviewChecklist.length ? { content: { ...m, reviewChecklist } as unknown as Prisma.InputJsonValue } : {}),
-    },
-  });
+    });
+  } catch (e) {
+    await ctx?.log(`⚠️ ${(e as Error).message}`);
+    throw e;
+  }
   await ctx?.progress(100, `제안 ${finalReview.changes.length}건 · 확인 필요 ${finalReview.concerns.length}건`);
   return { changes: finalReview.changes.length };
 }
@@ -207,13 +211,26 @@ function mockTypoChanges(m: Manuscript) {
   return hit ? [{ field: hit === m.intro ? "intro" : "conclusion", before: "  ", after: " ", reason: "오탈자" as const, evidence: "공백 중복" }] : [];
 }
 
+/** 처음 나오는 before 하나만 after 로 — String.replace 와 달리 after 의 "$&"·"$1" 같은 특수 패턴을 해석하지 않음 */
+export function replaceFirst(text: string, before: string, after: string): string {
+  const i = text.indexOf(before);
+  return i < 0 ? text : text.slice(0, i) + after + text.slice(i + before.length);
+}
+
+/** 객체 구조(키 이름·배열 길이·값의 종류)만 뽑은 모양 — JSON 통째 치환이 구조를 바꿨는지 확인용 */
+function shapeOf(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(shapeOf);
+  if (v != null && typeof v === "object") return Object.fromEntries(Object.keys(v as object).sort().map((k) => [k, shapeOf((v as Record<string, unknown>)[k])]));
+  return typeof v;
+}
+
 /** 객체·배열 안의 문자열 값들을 재귀적으로 뒤져 before → after 치환 (표의 headers/rows 처럼 field 가 문자열이 아닌 중첩 구조를 가리킬 때 사용) */
 function replaceNested(node: unknown, before: string, after: string): boolean {
   if (Array.isArray(node)) {
     let changed = false;
     for (let i = 0; i < node.length; i++) {
       if (typeof node[i] === "string" && node[i].includes(before)) {
-        node[i] = node[i].replace(before, after);
+        node[i] = replaceFirst(node[i], before, after);
         changed = true;
       } else if (node[i] != null && typeof node[i] === "object") {
         changed = replaceNested(node[i], before, after) || changed;
@@ -226,7 +243,7 @@ function replaceNested(node: unknown, before: string, after: string): boolean {
     for (const key of Object.keys(node as Record<string, unknown>)) {
       const v = (node as Record<string, unknown>)[key];
       if (typeof v === "string" && v.includes(before)) {
-        (node as Record<string, unknown>)[key] = v.replace(before, after);
+        (node as Record<string, unknown>)[key] = replaceFirst(v, before, after);
         changed = true;
       } else if (v != null && typeof v === "object") {
         changed = replaceNested(v, before, after) || changed;
@@ -252,7 +269,7 @@ export function applyChange(m: Manuscript, change: { field: string; before: stri
   const value = obj[last];
   if (typeof value === "string") {
     if (!value.includes(change.before)) return false;
-    obj[last] = value.replace(change.before, change.after);
+    obj[last] = replaceFirst(value, change.before, change.after);
     return true;
   }
   if (replaceNested(value, change.before, change.after)) return true;
@@ -263,7 +280,9 @@ export function applyChange(m: Manuscript, change: { field: string; before: stri
     const json = JSON.stringify(value);
     if (json.includes(change.before)) {
       try {
-        const patched = JSON.parse(json.split(change.before).join(change.after));
+        const patched = JSON.parse(replaceFirst(json, change.before, change.after));
+        // 키 이름·셀 개수·값 종류가 바뀌는 치환(예: before 에 따옴표·키가 걸친 경우)은 원고 구조를 망가뜨리므로 거부 — 글자 값만 바뀌어야 함
+        if (JSON.stringify(shapeOf(patched)) !== JSON.stringify(shapeOf(value))) return false;
         obj[last] = patched;
         return true;
       } catch {
@@ -288,6 +307,7 @@ function currentTextAt(m: Manuscript, field: string): string | null {
 /** 사람이 고른 제안만 적용 */
 export async function applyAiReview(postId: string, indices: number[]) {
   const post = await db.post.findUniqueOrThrow({ where: { id: postId } });
+  if (isEditLocked(post.status)) throw new Error(editLockedMessage(post.status));
   const m = readManuscript(post.content);
   const review = post.aiReview as AiReview | null;
   if (!m || !review) throw new Error("검수 결과가 없습니다.");

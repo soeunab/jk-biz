@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { fail, handle, ok } from "@/lib/api";
 import { rerenderPost } from "@/lib/content/service";
 import { ManuscriptSchema } from "@/lib/content/types";
+import { editLockedMessage, isEditLocked } from "@/lib/content/postStatus";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -11,6 +12,11 @@ export const PATCH = handle(async (req: Request, { params }: Ctx) => {
   const id = (await params).id;
   const body = (await req.json()) as { manuscript?: unknown; reviewerNote?: string; accountId?: string | null };
   const data: Prisma.PostUpdateInput = {};
+  // 승인·공개 후에는 원고·계정을 바꾸지 않음(공개 단계는 승인된 내용을 그대로 내보내므로 어긋남). 검수 메모는 언제든 저장 가능
+  if (body.manuscript !== undefined || body.accountId !== undefined) {
+    const cur = await db.post.findUniqueOrThrow({ where: { id }, select: { status: true } });
+    if (isEditLocked(cur.status)) return fail(editLockedMessage(cur.status));
+  }
   if (body.manuscript !== undefined) {
     const parsed = ManuscriptSchema.safeParse(body.manuscript);
     if (!parsed.success) return fail(`원고 형식 오류: ${parsed.error.issues[0]?.path.join(".")} ${parsed.error.issues[0]?.message}`);

@@ -5,7 +5,8 @@ import { generateJson } from "../llm";
 import type { JobContext } from "../jobs/queue";
 import { buildSystemPrompt } from "./prompts";
 import { recipeFor } from "./recipes";
-import { readManuscript, rerenderPost } from "./service";
+import { readManuscript, rerenderPost, saveIfUnchanged } from "./service";
+import { editLockedMessage, isEditLocked } from "./postStatus";
 import { SectionSchema, type Platform } from "./types";
 
 /**
@@ -14,6 +15,7 @@ import { SectionSchema, type Platform } from "./types";
  */
 export async function rewriteSection(postId: string, index: number, instruction: string, ctx?: JobContext) {
   const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { account: true, topic: true } });
+  if (isEditLocked(post.status)) throw new Error(editLockedMessage(post.status));
   const m = readManuscript(post.content);
   if (!m || !m.sections[index]) throw new Error("섹션을 찾을 수 없습니다.");
   const brand = accountBrand(await getBrand(), post.account);
@@ -48,7 +50,13 @@ ${target.body}`,
   });
 
   m.sections[index] = { ...section, heading: target.heading, image: target.image };
-  await db.post.update({ where: { id: postId }, data: { content: m as unknown as Prisma.InputJsonValue } });
+  // 다시 쓰는 사이 사람이 원고를 저장했다면 덮어쓰지 않음
+  try {
+    await saveIfUnchanged(postId, post.updatedAt, { content: m as unknown as Prisma.InputJsonValue });
+  } catch (e) {
+    await ctx?.log(`⚠️ ${(e as Error).message}`);
+    throw e;
+  }
   await rerenderPost(postId);
   await ctx?.log(`${index + 1}번 섹션 다시 쓰기 완료`);
   return { index };

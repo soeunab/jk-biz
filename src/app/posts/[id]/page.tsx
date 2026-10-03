@@ -16,6 +16,7 @@ import { getBrand } from "@/lib/brand";
 import { readinessIssues } from "@/lib/content/readiness";
 import { ManualTaskCard } from "@/components/ManualTaskCard";
 import { pendingManualTasks } from "@/lib/manualTasks";
+import { canMarkPublished, canRegenerate, editLockedMessage, isEditLocked, NAVER_UNCONFIRMED, UNLINK_ALLOWED } from "@/lib/content/postStatus";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,13 @@ export default async function PostPage({ params, searchParams }: { params: Promi
     .sort((a, b) => Number(b.partner) - Number(a.partner));
   const issues = m && ["DRAFT", "PRIVATE", "APPROVED"].includes(post.status) ? readinessIssues(m, { brand: await getBrand(), similarity: report?.similarity, renderedHtml: post.html, researchNotes: researchNotesOf(post.research), republish: (post.seoReport as { republish?: null | { sourceTitle: string; sourceUrl: string | null; similarity: number; warn: boolean } } | null)?.republish ?? null, accountConcept: post.account ? post.account.concept : undefined }) : [];
   const demo = (post.account?.settings as { demo?: boolean } | null)?.demo;
+  // 승인·공개 후에는 원고·이미지를 프로그램에서 바꾸지 않음 (공개 단계가 승인된 내용을 그대로 내보냄)
+  const locked = isEditLocked(post.status);
+  const canUnlinkNaver = post.platform === "NAVER" && !!post.remoteId && (UNLINK_ALLOWED as readonly string[]).includes(post.status);
+  const bloggerEdit =
+    post.platform === "BLOGGER" && post.remoteId && post.status !== "PUBLISHED" && post.account?.externalId
+      ? `https://www.blogger.com/blog/post/edit/${post.account.externalId}/${post.remoteId}`
+      : null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -75,6 +83,9 @@ export default async function PostPage({ params, searchParams }: { params: Promi
         <h1 className="mt-2 text-2xl font-bold">{post.title || post.focusKeyword}</h1>
         {post.remoteUrl && (
           <a href={post.remoteUrl} target="_blank" className="text-xs text-indigo-600 underline">{post.remoteUrl}</a>
+        )}
+        {bloggerEdit && (
+          <a href={bloggerEdit} target="_blank" className="text-xs text-indigo-600 underline">블로거 편집 화면에서 보기 (초안)</a>
         )}
         {post.source && (
           <div className="mt-2 text-xs">
@@ -111,14 +122,17 @@ export default async function PostPage({ params, searchParams }: { params: Promi
           ))}
         </ol>
         <div className="flex flex-wrap gap-2">
-          {["DRAFT", "FAILED"].includes(post.status) && m && (
+          {["DRAFT", "FAILED"].includes(post.status) && m && !(post.platform === "NAVER" && post.remoteId) && (
             <ActionButton url={`/api/posts/${id}/action`} body={{ action: "publishPrivate" }} className="btn-primary"
               label={post.platform === "BLOGGER" ? "🔒 블로거에 초안(비공개) 저장" : "🔒 네이버에 비공개 발행"} />
           )}
           {post.status === "PRIVATE" && (
             <>
               <ApproveButton postId={id} />
-              <ActionButton url={`/api/posts/${id}/action`} body={{ action: "publishPrivate" }} label="🔁 수정본 다시 올리기" />
+              {/* 네이버는 다시 올리면 새 글이 하나 더 생겨서(중복 글) 블로거만 제공 — 네이버는 네이버에서 직접 수정 */}
+              {post.platform === "BLOGGER" && (
+                <ActionButton url={`/api/posts/${id}/action`} body={{ action: "publishPrivate" }} label="🔁 수정본 다시 올리기" />
+              )}
               <RejectButton postId={id} />
             </>
           )}
@@ -128,7 +142,19 @@ export default async function PostPage({ params, searchParams }: { params: Promi
               <ActionButton url={`/api/posts/${id}/action`} body={{ action: "unapprove" }} label="승인 취소" />
             </>
           )}
-          {["PRIVATE", "APPROVED"].includes(post.status) && <MarkPublished postId={id} />}
+          {canMarkPublished(post) && <MarkPublished postId={id} />}
+          {canUnlinkNaver && (
+            <ActionButton
+              url={`/api/posts/${id}/action`}
+              body={{ action: "unlinkRemote" }}
+              label="🔗 네이버 연결 해제"
+              confirm={
+                post.remoteId === NAVER_UNCONFIRMED
+                  ? "네이버 '내 글'에 이 글이 없는 것을 확인했나요? 연결을 해제하면 다시 올릴 수 있어요(있는데 해제하면 같은 글이 두 개 생겨요)."
+                  : "네이버에서 이 글을 먼저 삭제했나요? 연결을 해제하면 다시 올릴 수 있어요(삭제하지 않고 다시 올리면 같은 글이 두 개 생겨요)."
+              }
+            />
+          )}
           {post.status === "DRAFT" && <RejectButton postId={id} />}
           {post.status === "REJECTED" && <ActionButton url={`/api/posts/${id}/action`} body={{ action: "reopen" }} label="↩️ 다시 검토하기" />}
           {post.status !== "GENERATING" && (
@@ -173,16 +199,16 @@ export default async function PostPage({ params, searchParams }: { params: Promi
                 )}
               </article>
             )}
-            {tab === "edit" && <ManuscriptEditor postId={id} initial={m} />}
+            {tab === "edit" && (locked ? <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600">🔒 {editLockedMessage(post.status)}</p> : <ManuscriptEditor postId={id} initial={m} />)}
             {tab === "images" && (
               <div>
                 <div className="mb-4 flex items-center justify-between">
                   <p className="text-sm text-gray-500">AI 도구 사용법 글은 <b>직접 캡처한 화면</b>으로 교체하면 신뢰도(E-E-A-T)와 네이버 독창성 평가에 유리해요.</p>
-                  <ActionButton url={`/api/posts/${id}/action`} body={{ action: "images" }} label="🎨 이미지 전체 다시 만들기" confirm="기존 이미지를 모두 새로 만듭니다." />
+                  {!locked && <ActionButton url={`/api/posts/${id}/action`} body={{ action: "images" }} label="🎨 이미지 전체 다시 만들기" confirm="기존 이미지를 모두 새로 만듭니다." />}
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {post.assets.map((a) => (
-                    <AssetCard key={a.id} a={{ id: a.id, slot: a.slot, src: a.publicUrl ?? "", alt: a.alt, source: a.source, credit: a.credit }} />
+                    <AssetCard key={a.id} locked={locked} a={{ id: a.id, slot: a.slot, src: a.publicUrl ?? "", alt: a.alt, source: a.source, credit: a.credit }} />
                   ))}
                 </div>
               </div>
@@ -198,6 +224,7 @@ export default async function PostPage({ params, searchParams }: { params: Promi
           <aside className="flex flex-col gap-4">
             <AiReviewCard
               postId={id}
+              locked={locked}
               review={(post.aiReview ?? null) as Parameters<typeof AiReviewCard>[0]["review"]}
               atLabel={(post.aiReview as { at?: string } | null)?.at ? new Date((post.aiReview as { at: string }).at).toLocaleString("ko-KR") : undefined}
             />
@@ -210,7 +237,11 @@ export default async function PostPage({ params, searchParams }: { params: Promi
             />
             <div className="card flex flex-col gap-2 text-sm">
               <h3 className="font-semibold">원고 관리</h3>
-              <ActionButton url={`/api/posts/${id}/action`} body={{ action: "regenerate" }} label="🤖 AI로 원고 다시 쓰기" confirm="현재 원고와 이미지를 새로 생성합니다. 수정 내용은 사라져요." />
+              {canRegenerate(post.status) ? (
+                <ActionButton url={`/api/posts/${id}/action`} body={{ action: "regenerate" }} label="🤖 AI로 원고 다시 쓰기" confirm="현재 원고와 이미지를 새로 생성합니다. 수정 내용은 사라져요." />
+              ) : (
+                post.status !== "GENERATING" && <p className="text-xs text-gray-500">🔒 {editLockedMessage(post.status)}</p>
+              )}
               {post.cardNews.map((c) => (
                 <Link key={c.id} href={`/cardnews/${c.id}`} className="text-xs text-indigo-600">🖼️ 카드뉴스: {c.title}</Link>
               ))}

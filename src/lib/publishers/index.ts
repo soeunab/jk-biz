@@ -5,6 +5,7 @@ import { bloggerPublish, bloggerSaveDraft } from "./blogger";
 import { naverMakePublic, naverPublishPrivate } from "./naver";
 import { publishCardNews } from "./social";
 import type { PublishResult } from "./types";
+import { NAVER_UNCONFIRMED, NAVER_UNCONFIRMED_MSG, publicUrlOf, PUBLISH_PRIVATE_ALLOWED } from "../content/postStatus";
 
 /** 데모 계정(settings.demo=true)은 실제 발행 대신 흐름만 시뮬레이션합니다. */
 async function isDemo(accountId: string | null) {
@@ -17,6 +18,8 @@ async function isDemo(accountId: string | null) {
 export async function publishPrivate(postId: string, ctx?: JobContext) {
   const post = await db.post.findUniqueOrThrow({ where: { id: postId } });
   const log = (m: string) => ctx?.log(m);
+  // 작업이 대기하는 사이 상태가 바뀌었을 수 있음(승인·재생성 등) — 실행 시점에 다시 확인
+  if (!(PUBLISH_PRIVATE_ALLOWED as readonly string[]).includes(post.status)) throw new Error(`지금 상태(${post.status})에서는 비공개 발행을 하지 않아요.`);
   let result: PublishResult;
   if (await isDemo(post.accountId)) {
     await log("데모 계정 — 실제 플랫폼에는 발행하지 않고 상태만 변경합니다.");
@@ -26,9 +29,15 @@ export async function publishPrivate(postId: string, ctx?: JobContext) {
   } else {
     result = await naverPublishPrivate(postId, log);
   }
+  if (result.note === NAVER_UNCONFIRMED) {
+    // 올라갔는지 모름 — 상태는 초안으로 두고 다시 올리기는 막음(사람이 네이버에서 확인 후 정리)
+    await db.post.update({ where: { id: postId }, data: { status: "DRAFT", remoteId: NAVER_UNCONFIRMED, remoteUrl: null, error: NAVER_UNCONFIRMED_MSG } });
+    return result;
+  }
   await db.post.update({
     where: { id: postId },
-    data: { status: "PRIVATE", privateAt: new Date(), remoteId: result.remoteId ?? post.remoteId, remoteUrl: result.remoteUrl ?? post.remoteUrl, error: null },
+    // 블로거 초안은 공개 주소가 없음(편집 주소는 쓰지 않음) — 공개 발행 때 실제 주소가 들어감
+    data: { status: "PRIVATE", privateAt: new Date(), remoteId: result.remoteId ?? post.remoteId, remoteUrl: post.platform === "BLOGGER" ? null : (result.remoteUrl ?? post.remoteUrl), error: null },
   });
   return result;
 }
@@ -37,6 +46,7 @@ export async function publishPrivate(postId: string, ctx?: JobContext) {
 export async function publishPublic(postId: string, ctx?: JobContext) {
   const post = await db.post.findUniqueOrThrow({ where: { id: postId } });
   const log = (m: string) => ctx?.log(m);
+  if (post.status !== "APPROVED") throw new Error(`사람 승인(APPROVED) 상태가 아니라 공개 발행을 하지 않았어요(지금 상태: ${post.status}).`);
   let result: PublishResult;
   if (await isDemo(post.accountId)) {
     await log("데모 계정 — 공개 발행을 시뮬레이션합니다.");
@@ -57,12 +67,14 @@ export async function publishSocial(socialPostId: string, ctx?: JobContext) {
   const sp = await db.socialPost.findUniqueOrThrow({ where: { id: socialPostId }, include: { cardNews: { include: { post: true } } } });
   const log = (m: string) => ctx?.log(m);
   try {
+    const p = sp.cardNews.post;
+    if (sp.cardNews.postId && !["APPROVED", "PUBLISHED"].includes(p?.status ?? "")) throw new Error("원고 승인 후 SNS 발행할 수 있어요.");
     let result: PublishResult;
     if (await isDemo(sp.accountId)) {
       await log("데모 계정 — SNS 발행을 시뮬레이션합니다.");
       result = { remoteId: `demo-${sp.id.slice(-6)}` };
     } else {
-      result = await publishCardNews(sp.cardNewsId, sp.accountId!, sp.cardNews.post?.remoteUrl ?? "", log);
+      result = await publishCardNews(sp.cardNewsId, sp.accountId!, publicUrlOf(p) ?? "", log);
     }
     await db.socialPost.update({ where: { id: socialPostId }, data: { status: "PUBLISHED", publishedAt: new Date(), remoteId: result.remoteId, remoteUrl: result.remoteUrl, error: null } });
     return result;

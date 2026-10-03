@@ -14,6 +14,7 @@ import { normalizeKeyword } from "../topics/scoring";
 import { ensureKeywordInTitle, expandKeyword, relatedOf } from "../topics/longtail";
 import { detectRisk, manuscriptRiskText } from "./risk";
 import { ManualPendingError } from "../llm/manual";
+import { publicUrlOf, STALE_EDIT_MSG } from "./postStatus";
 
 export type AccountSettings = {
   adsenseClientId?: string;
@@ -32,6 +33,15 @@ export type AccountSettings = {
 
 export function accountSettings(v: unknown): AccountSettings {
   return asObject<AccountSettings>(v, {});
+}
+
+/**
+ * 작업 시작 때 읽은 원고가 그대로일 때만 저장 (낙관적 잠금) — 몇 분 걸리는 AI 작업이 그 사이 사람이 저장한 수정을 덮어쓰지 않게 합니다.
+ * 바뀌었으면 저장하지 않고 예외를 던져 작업을 실패로 끝냅니다.
+ */
+export async function saveIfUnchanged(postId: string, startedAt: Date, data: Prisma.PostUpdateManyMutationInput) {
+  const r = await db.post.updateMany({ where: { id: postId, updatedAt: startedAt }, data });
+  if (r.count !== 1) throw new Error(STALE_EDIT_MSG);
 }
 
 /** 저장된 조사 메모 텍스트 (없으면 null) */
@@ -117,11 +127,11 @@ export async function createRepublish(sourceId: string, accountId: string) {
   return { post, warnings: await generationWarnings([account.id]) };
 }
 
-/** 원본 링크 표시용 정보 (URL 은 원본이 발행된 뒤에 생김) */
+/** 원본 링크 표시용 정보 (URL 은 원본이 공개 발행된 뒤에만 씀) */
 async function sourceLinkOf(sourcePostId: string | null) {
   if (!sourcePostId) return null;
   const src = await db.post.findUnique({ where: { id: sourcePostId }, include: { account: { select: { name: true } } } });
-  return src ? { id: src.id, title: src.title, url: src.remoteUrl ?? undefined, platform: src.platform, accountName: src.account?.name ?? "", content: src.content } : null;
+  return src ? { id: src.id, title: src.title, url: publicUrlOf(src), platform: src.platform, accountName: src.account?.name ?? "", content: src.content } : null;
 }
 
 /** 워커: 원고 생성 → 이미지 → 렌더링 → SEO 점검 */
@@ -236,6 +246,34 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
   }
 }
 
+/**
+ * 유사문서 검사 — 같은 플랫폼 안에서만 비교합니다.
+ * (같은 주제를 블로거·네이버용으로 각각 다시 쓴 것은 의도된 정상 동작이라 플랫폼 간 비교는 오탐이 됩니다)
+ */
+export async function similarityAgainstOthers(postId: string, platform: string, text: string) {
+  const others = await db.post.findMany({
+    where: { id: { not: postId }, platform, status: { notIn: ["FAILED", "REJECTED"] } },
+    select: { id: true, title: true, content: true, accountId: true },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+  let max = 0;
+  let withPost: { id: string; title: string } | null = null;
+  for (const o of others) {
+    const om = readManuscript(o.content);
+    if (!om) continue;
+    const s = similarity(text, manuscriptText(om));
+    if (s > max) [max, withPost] = [s, { id: o.id, title: o.title }];
+  }
+  return { max, with: withPost };
+}
+
+/** 승인 직전에 다시 계산한 유사도 (같은 주제를 두 계정에 만들면 먼저 끝난 글은 저장값이 0% 로 남기 때문) */
+export async function currentSimilarity(postId: string, platform: string, m: Manuscript) {
+  const { max, with: withPost } = await similarityAgainstOthers(postId, platform, manuscriptText(m));
+  return { max: Math.round(max * 100) / 100, with: withPost, warn: max >= SIMILARITY_WARN };
+}
+
 /** 원고/이미지/설정이 바뀌면 HTML 과 SEO 리포트를 다시 계산합니다. */
 export async function rerenderPost(postId: string, opts: { forPublish?: boolean; imageUrl?: (a: { localPath: string; publicUrl: string | null }) => Promise<string> } = {}) {
   const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { assets: { orderBy: { order: "asc" } }, account: true } });
@@ -264,7 +302,8 @@ export async function rerenderPost(postId: string, opts: { forPublish?: boolean;
     images,
     products: products.map((p) => ({ id: p.id, name: p.name, url: p.url, program: p.program, price: p.price })),
     adsense: { client: settings.adsenseClientId, slot: settings.adsenseSlotId },
-    canonicalUrl: post.remoteUrl ?? undefined,
+    // 공개된 글의 주소만 캐노니컬로 — 초안 편집 주소·비공개 주소는 쓰지 않음
+    canonicalUrl: publicUrlOf(post),
     placeholders: opts.forPublish ? "strip" : "highlight",
     riskDisclaimers: detectRisk(manuscriptRiskText(m))?.disclaimers,
     sourceLink: undefined,
@@ -283,23 +322,8 @@ export async function rerenderPost(postId: string, opts: { forPublish?: boolean;
     researchNotes: researchNotesOf(post.research),
   });
 
-  // 유사문서 검사 — 같은 플랫폼 안에서만 비교합니다.
-  // (같은 주제를 블로거·네이버용으로 각각 다시 쓴 것은 의도된 정상 동작이라 플랫폼 간 비교는 오탐이 됩니다)
   const text = manuscriptText(m);
-  const others = await db.post.findMany({
-    where: { id: { not: postId }, platform: post.platform, status: { notIn: ["FAILED", "REJECTED"] } },
-    select: { id: true, title: true, content: true, accountId: true },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
-  let maxSim = 0;
-  let simWith: { id: string; title: string } | null = null;
-  for (const o of others) {
-    const om = readManuscript(o.content);
-    if (!om) continue;
-    const s = similarity(text, manuscriptText(om));
-    if (s > maxSim) [maxSim, simWith] = [s, { id: o.id, title: o.title }];
-  }
+  const { max: maxSim, with: simWith } = await similarityAgainstOthers(postId, post.platform, text);
 
   // 재발행 원고는 플랫폼이 달라도 원본과 직접 비교 — 구글은 블로거·네이버 글을 모두 색인하므로 거의 같은 글은 중복 콘텐츠 위험
   const sourceM = source ? readManuscript(source.content) : null;

@@ -24,6 +24,27 @@ export async function enqueue(type: JobType, payload: Record<string, unknown> = 
   return db.job.create({ data: { type, payload: payload as Prisma.InputJsonValue, runAt: runAt ?? new Date() } });
 }
 
+/** 같은 대상(원고·카드뉴스·SNS 글)을 가리키는 작업 식별 키 */
+function targetKey(payload: unknown): string | null {
+  const p = (payload ?? {}) as Record<string, unknown>;
+  for (const k of ["postId", "socialPostId", "cardNewsId"]) if (typeof p[k] === "string") return `${k}:${p[k]}`;
+  return null;
+}
+
+/**
+ * 같은 종류·같은 대상의 작업이 이미 대기·실행·수동 대기 중이면 새로 넣지 않고 그 작업을 돌려줍니다.
+ * (발행 버튼 두 번 누름 → 네이버 비공개 글 두 개 같은 중복 실행 방지)
+ */
+export async function enqueueOnce(type: JobType, payload: Record<string, unknown> = {}) {
+  const key = targetKey(payload);
+  if (key) {
+    const active = await db.job.findMany({ where: { type, status: { in: ["QUEUED", "RUNNING", "WAITING"] } }, orderBy: { createdAt: "asc" } });
+    const same = active.find((j) => targetKey(j.payload) === key);
+    if (same) return same;
+  }
+  return enqueue(type, payload);
+}
+
 /** 가장 오래된 대기 작업 하나를 원자적으로 가져옵니다. */
 export async function claimNext() {
   const next = await db.job.findFirst({

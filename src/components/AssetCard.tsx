@@ -7,7 +7,7 @@ type A = { id: string; slot: string; src: string; alt: string; source: string; c
 
 const SOURCE_LABEL: Record<string, string> = { GEMINI: "AI 생성", UNSPLASH: "Unsplash", PEXELS: "Pexels", SCREENSHOT: "화면 캡처", TEMPLATE: "템플릿", UPLOAD: "직접 업로드" };
 
-export function AssetCard({ a }: { a: A }) {
+export function AssetCard({ a, locked = false }: { a: A; locked?: boolean }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [alt, setAlt] = useState(a.alt);
@@ -32,12 +32,14 @@ export function AssetCard({ a }: { a: A }) {
           <span className="font-semibold">{a.slot}</span>
           <span className="badge bg-gray-100 text-gray-600">{SOURCE_LABEL[a.source] ?? a.source}</span>
         </div>
-        <input className="input text-xs" value={alt} onChange={(e) => setAlt(e.target.value)} placeholder="대체텍스트(alt)" />
+        <input className="input text-xs" value={alt} disabled={locked} onChange={(e) => setAlt(e.target.value)} placeholder="대체텍스트(alt)" />
         {a.credit && <div className="text-[11px] text-gray-400">{a.credit}</div>}
-        <div className="flex gap-2">
-          <button className="btn-secondary flex-1 text-xs" disabled={busy} onClick={() => input.current?.click()}>직접 캡처로 교체</button>
-          <button className="btn-secondary text-xs" disabled={busy || alt === a.alt} onClick={() => send()}>alt 저장</button>
-        </div>
+        {!locked && (
+          <div className="flex gap-2">
+            <button className="btn-secondary flex-1 text-xs" disabled={busy} onClick={() => input.current?.click()}>직접 캡처로 교체</button>
+            <button className="btn-secondary text-xs" disabled={busy || alt === a.alt} onClick={() => send()}>alt 저장</button>
+          </div>
+        )}
         <input ref={input} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && send(e.target.files[0])} />
       </div>
     </div>

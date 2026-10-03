@@ -29,12 +29,9 @@ const REFERENCE = {
 /** 본문에 의존하는 표현 — 문장만 떼어 인용(AI 답변·스니펫)되면 뜻이 통하지 않음 */
 export const DEPENDENT_RE = /(위에서|앞서|앞에서|아래에서|이 글에서|본문에서|위와 같이|아래와 같이|다음과 같이|상기한|전술한)/;
 
+/** 남은 경험 자리표시 수 — 제목·요약·소제목·FAQ 질문·표·CTA 까지 원고 전체(사람용 확인 목록 제외)에서 셉니다 */
 export function countPlaceholders(m: Manuscript): number {
-  return (manuscriptTextRaw(m).match(PLACEHOLDER_RE) ?? []).length;
-}
-
-function manuscriptTextRaw(m: Manuscript) {
-  return [m.intro, m.directAnswer, ...m.sections.flatMap((s) => [s.body, s.tip]), ...m.faq.map((f) => f.a), m.conclusion].join("\n");
+  return (JSON.stringify({ ...m, reviewChecklist: [] }).match(PLACEHOLDER_RE) ?? []).length;
 }
 
 function firstSentence(s: string) {

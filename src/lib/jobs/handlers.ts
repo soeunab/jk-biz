@@ -11,6 +11,7 @@ import { generateInsights } from "../insights/engine";
 import { db } from "../db";
 import { runAiReview } from "../content/review";
 import { rewriteSection } from "../content/section";
+import { editLockedMessage, isEditLocked } from "../content/postStatus";
 import type { JobContext, JobType } from "./queue";
 
 type Handler = (payload: Record<string, unknown>, ctx: JobContext) => Promise<unknown>;
@@ -22,6 +23,7 @@ export const handlers: Record<JobType, Handler> = {
   "post.generate": (p, ctx) => runGeneratePost(String(p.postId), ctx),
   "post.images": async (p, ctx) => {
     const post = await db.post.findUniqueOrThrow({ where: { id: String(p.postId) } });
+    if (isEditLocked(post.status)) throw new Error(editLockedMessage(post.status));
     const m = readManuscript(post.content);
     if (!m) throw new Error("원고가 없습니다.");
     await buildPostImages(post.id, m, post.platform as "NAVER" | "BLOGGER", (msg) => ctx.log(msg));

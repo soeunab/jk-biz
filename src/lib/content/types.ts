@@ -52,5 +52,13 @@ export type Section = z.infer<typeof SectionSchema>;
 export type ImageSlot = z.infer<typeof ImageSlotSchema>;
 export type Platform = "NAVER" | "BLOGGER";
 
-/** 사람이 채워야 하는 경험 자리표시. AI 는 경험을 지어내지 않고 이 형식으로 자리만 남깁니다. */
-export const PLACEHOLDER_RE = /\[경험 추가:[^\]]*\]/g;
+/**
+ * 사람이 채워야 하는 경험 자리표시. AI 는 경험을 지어내지 않고 이 형식으로 자리만 남깁니다.
+ * "[경험 추가: …]" 외에 AI·사람이 흔히 쓰는 변형("[ 경험추가 : …]", "[경험 추가]")도 잡습니다.
+ */
+export const PLACEHOLDER_RE = /\[\s*경험\s*추가\s*:?[^\]]*\]/g;
+
+/** 발행 제목·구조화 데이터처럼 HTML 이 아닌 문자열에서 자리표시를 지움 */
+export function stripPlaceholders(s: string): string {
+  return s.replace(PLACEHOLDER_RE, "").replace(/[ \t]{2,}/g, " ").trim();
+}

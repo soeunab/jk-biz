@@ -8,6 +8,7 @@ import { CaptionEditor, SlideEditor, SocialPublish } from "@/components/CardNews
 import { Badge, PLATFORM } from "@/components/ui";
 import { ManualTaskCard } from "@/components/ManualTaskCard";
 import { pendingManualTasks } from "@/lib/manualTasks";
+import { publicUrlOf } from "@/lib/content/postStatus";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +78,7 @@ export default async function CardNewsDetail({ params }: { params: Promise<{ id:
           </div>
           <div className="card">
             <h2 className="mb-3 font-semibold">플랫폼별 캡션</h2>
-            <CaptionEditor id={id} captions={(card.captions ?? {}) as Partial<Captions>} link={card.post?.remoteUrl ?? ""} />
+            <CaptionEditor id={id} captions={(card.captions ?? {}) as Partial<Captions>} link={publicUrlOf(card.post) ?? ""} />
           </div>
         </div>
       </div>

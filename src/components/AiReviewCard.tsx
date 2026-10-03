@@ -9,7 +9,7 @@ type Review = { at: string; summary: string; changes: Change[]; concerns: string
 
 /** AI 사실 검수 결과 — 자동 반영하지 않고, 사람이 골라서 적용 */
 /** atLabel 은 서버에서 포맷해 전달 (서버·브라우저의 날짜 포맷 차이로 인한 hydration 오류 방지) */
-export function AiReviewCard({ postId, review, atLabel }: { postId: string; review: Review | null; atLabel?: string }) {
+export function AiReviewCard({ postId, review, atLabel, locked = false }: { postId: string; review: Review | null; atLabel?: string; locked?: boolean }) {
   const run = useSubmit();
   const apply = useSubmit();
   const [sel, setSel] = useState<number[]>([]);
@@ -18,9 +18,11 @@ export function AiReviewCard({ postId, review, atLabel }: { postId: string; revi
     <div className="card">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="font-semibold">AI 사실 검수</h3>
-        <button className="btn-secondary text-xs" disabled={run.busy} onClick={() => run.submit(`/api/posts/${postId}/review`, {})}>
-          {run.busy && <Spinner />}🔎 {review ? "다시 검수" : "검수 실행"}
-        </button>
+        {!locked && (
+          <button className="btn-secondary text-xs" disabled={run.busy} onClick={() => run.submit(`/api/posts/${postId}/review`, {})}>
+            {run.busy && <Spinner />}🔎 {review ? "다시 검수" : "검수 실행"}
+          </button>
+        )}
       </div>
       <p className="text-xs text-gray-500">웹 검색으로 사실 오류·오탈자만 찾아 제안해요. 제목·구조·키워드는 보존하고, 적용은 직접 고릅니다.</p>
       {run.msg && <p className="mt-1 text-xs text-gray-500">{run.msg}</p>}
@@ -32,7 +34,7 @@ export function AiReviewCard({ postId, review, atLabel }: { postId: string; revi
             const done = review.applied.includes(i);
             return (
               <label key={i} className={`flex gap-2 rounded-lg border p-2 text-xs ${done ? "opacity-50" : ""}`}>
-                <input type="checkbox" disabled={done} checked={sel.includes(i)} onChange={(e) => setSel(e.target.checked ? [...sel, i] : sel.filter((x) => x !== i))} />
+                <input type="checkbox" disabled={done || locked} checked={sel.includes(i)} onChange={(e) => setSel(e.target.checked ? [...sel, i] : sel.filter((x) => x !== i))} />
                 <span className="flex-1">
                   <span className={`badge mr-1 ${c.reason === "사실오류" ? "bg-red-50 text-red-700" : "bg-gray-100"}`}>{c.reason}</span>
                   <span className="text-gray-400">{c.field}</span>
@@ -46,7 +48,7 @@ export function AiReviewCard({ postId, review, atLabel }: { postId: string; revi
               </label>
             );
           })}
-          {review.changes.length > 0 && (
+          {review.changes.length > 0 && !locked && (
             <button
               className="btn-primary"
               disabled={apply.busy || !sel.length}

@@ -7,6 +7,8 @@ import { env } from "../env";
 import { launchOptions } from "../browser";
 import { accountSettings, rerenderPost } from "../content/service";
 import { renderNaverSegments } from "../content/render";
+import { stripPlaceholders } from "../content/types";
+import { NAVER_UNCONFIRMED, NAVER_UNCONFIRMED_MSG } from "../content/postStatus";
 import type { PublishResult } from "./types";
 
 /**
@@ -127,6 +129,14 @@ export async function naverPublishPrivate(postId: string, log: (m: string) => un
   const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { account: true } });
   const account = post.account;
   if (!account?.externalId) throw new Error("네이버 계정(blogId)이 지정되지 않았습니다.");
+  // 네이버는 글쓰기 화면이 항상 새 글을 만듦 — 이미 올라간 글이 있으면 브라우저를 열기 전에 멈춤(중복 글 방지)
+  if (post.remoteId) {
+    throw new Error(
+      post.remoteId === NAVER_UNCONFIRMED
+        ? NAVER_UNCONFIRMED_MSG
+        : `이미 네이버에 올라간 글이 있어요(logNo=${post.remoteId}). 네이버에서 직접 수정하거나, 네이버에서 그 글을 삭제한 뒤 [네이버 연결 해제]를 누르고 다시 올리세요.`,
+    );
+  }
   const mode = accountSettings(account.settings).publishMode ?? "private";
   const rendered = await rerenderPost(postId, { forPublish: true });
   const segments = renderNaverSegments(rendered.manuscript, rendered.renderOptions);
@@ -135,7 +145,7 @@ export async function naverPublishPrivate(postId: string, log: (m: string) => un
   try {
     await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "https://blog.naver.com" });
     await (await first(frame, SELECTORS.title, 15_000)).click();
-    await page.keyboard.type(rendered.manuscript.title, { delay: 15 });
+    await page.keyboard.type(stripPlaceholders(rendered.manuscript.title), { delay: 15 });
     await log("제목 입력 완료");
 
     await (await first(frame, SELECTORS.body)).click();
@@ -222,11 +232,21 @@ export async function naverPublishPrivate(postId: string, log: (m: string) => un
     }
     await (await first(frame, SELECTORS.privateRadio)).click();
     await (await first(frame, SELECTORS.publishConfirm)).click();
-    await page.waitForURL(/blog\.naver\.com\/[^/]+\/\d+|logNo=\d+/, { timeout: 30_000 });
+    // 발행 버튼을 누른 뒤부터는 글이 이미 올라갔을 수 있음 — 주소 대기가 끝나지 않아도 실패(=재시도 유도)로 끝내지 않음
+    const confirmed = await page
+      .waitForURL(/blog\.naver\.com\/[^/]+\/\d+|logNo=\d+/, { timeout: 30_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!confirmed) await page.waitForTimeout(5000);
     const url = page.url();
     const logNo = url.match(/(?:\/|logNo=)(\d{6,})/)?.[1];
+    if (!logNo) {
+      const shot = await debugShot(page, "publish-unconfirmed");
+      await log(`⚠️ 발행 버튼은 눌렀지만 글 주소를 확인하지 못했어요 (화면: ${shot}). 자동으로 다시 올리지 않습니다.`);
+      return { remoteId: NAVER_UNCONFIRMED, note: NAVER_UNCONFIRMED };
+    }
     await log(`비공개 발행 완료: ${url}`);
-    return { remoteId: logNo, remoteUrl: logNo ? `https://blog.naver.com/${account.externalId}/${logNo}` : url };
+    return { remoteId: logNo, remoteUrl: `https://blog.naver.com/${account.externalId}/${logNo}` };
   } catch (e) {
     const shot = await debugShot(page, "publish");
     throw new Error(`${(e as Error).message}\n(오류 화면: ${shot})${checkHint(account.id)}`);
