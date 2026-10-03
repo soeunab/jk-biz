@@ -39,6 +39,8 @@ export const OPTIMIZATION_RULES = `
 - 1인칭 경험("제가 직접 해보니", "3분 걸렸어요")을 지어내지 마세요. 사용 후기(REVIEW)형 글일 때만
   "[경험 추가: 무엇을 적으면 좋은지 안내]" 형식의 자리표시를 본문에 1개 넣으세요(사람이 검수하며 실제 경험으로 채웁니다).
   비교·가이드·사용법 같은 정보성 글은 경험 자리표시 없이 정확한 정보·출처로 신뢰를 주면 됩니다.
+- 조사 메모·제공 자료에 나오지 않는 회사·제품·인물 사이의 관계(협업·투자·인수·공급·경쟁)를 추측해 쓰지 마세요.
+  연관 검색어에 함께 나온다는 이유만으로 관계를 만들지 마세요.
 - 과장·단정 표현 금지. 다른 블로그 문장을 베끼지 말고 독창적인 구성과 예시로 작성하세요.
 
 [신뢰·정책 — 투자·재테크·주식 주제일 때]
@@ -111,8 +113,17 @@ export type BriefInput = {
   republishOf?: { platform: Platform; accountName: string; title: string; headings: string[]; keyPoints: string[] };
   /** 함께 검색되는 롱테일 문구 (자동완성·"함께 많이 찾는"·검색광고 연관, volume = 네이버 월검색량) */
   relatedKeywords?: { keyword: string; volume: number | null }[];
+  /** 실시간 발굴 소재가 뜬 이유 — 실제 수집한 기사 요약·목록 (이 사건 중심으로 쓰게 함) */
+  storyContext?: StoryContext;
+  /** 사용자가 직접 준 자료 (📎 내 자료로 다시 쓰기) — 최우선 근거 */
+  userSources?: UserSources;
   today: string;
 };
+
+export type StoryContext = { summary: string; articles: { title: string; url: string | null; source: string }[] };
+
+/** 사용자 제공 자료: prefer = 내 자료 우선 + 웹 조사로 보충, only = 내 자료만(웹 조사 안 함) */
+export type UserSources = { notes: string; urls: string[]; mode: "prefer" | "only" };
 
 function relatedKeywordRules(b: BriefInput) {
   if (!b.relatedKeywords?.length) return "";
@@ -121,11 +132,33 @@ function relatedKeywordRules(b: BriefInput) {
     .map((r) => (r.volume != null ? `${r.keyword}(월 ${r.volume.toLocaleString("ko-KR")})` : r.keyword))
     .join(", ");
   return `
-[함께 검색되는 롱테일 문구 — 실제 자동완성·연관검색 데이터]
+[함께 검색되는 문구 — 참고용 (자동완성·연관검색 데이터)]
 ${list}
-- 이 문구들은 같은 주제로 실제 사람들이 검색하는 표현입니다. 검색량이 큰 것부터 소제목(heading)·FAQ 질문·본문에 자연스럽게 녹여, 한 글이 여러 롱테일 검색에 함께 노출되게 하세요. 억지 나열·반복은 금지.
-- 제목(title) 뒤쪽에 이 중 1개를 자연스럽게 붙일 수 있으면 붙이세요(핵심 키워드는 반드시 맨 앞 그대로).
-- relatedKeywords 필드에는 이 목록에서 글과 실제로 관련된 문구를 우선 넣으세요.`;
+- 이 중 핵심 키워드와 같은 대상·같은 사건을 다루는 문구만 골라 써도 됩니다. 관련 없는 문구는 무시하세요. 전부 쓸 필요 없음.
+- 이 문구를 쓰려고 조사 메모·제공 자료에 없는 회사·제품·인물·관계(협업·투자·인수·계약)를 끌어오지 마세요.
+- 골라 쓴 문구는 소제목·FAQ 질문·본문 중 어울리는 곳에 한 번씩만, 억지 나열·반복 금지.
+- relatedKeywords 필드에는 본문에 실제로 쓴 문구만 넣으세요.`;
+}
+
+/** 실시간 발굴 소재의 실제 수집 기사 — 원고가 키워드만 보고 인접한 다른 뉴스로 번지지 않게 */
+export function storyContextBlock(c?: StoryContext): string {
+  if (!c?.summary.trim() && !c?.articles.length) return "";
+  const arts = (c.articles ?? []).slice(0, 8).map((a) => `- ${a.title}${a.source ? ` (${a.source})` : ""}${a.url ? `: ${a.url}` : ""}`);
+  return `
+[이 소재가 뜬 이유 — 실제 수집 기사]
+${c.summary.trim() ? `요약: ${c.summary.trim()}\n` : ""}${arts.join("\n")}
+- 이 사건을 중심으로 쓰고, 다른 사건·회사로 확장하지 마세요.`;
+}
+
+/** 사용자 제공 자료 블록 — 프롬프트 최상단(핵심 키워드 바로 다음)에 넣음 */
+export function userSourcesBlock(u?: UserSources): string {
+  if (!u || (!u.notes.trim() && !u.urls.length)) return "";
+  return `
+[사용자 제공 자료 — 최우선 근거]
+${u.notes.trim() || "(본문 자료 없음 — 아래 URL 참고)"}
+${u.urls.length ? `참고 URL:\n${u.urls.map((x) => `- ${x}`).join("\n")}` : ""}
+- 이 자료와 조사 메모에 없는 사실·회사·수치·관계는 쓰지 마세요.
+- 자료와 웹 조사가 다르면 자료를 우선하고 reviewChecklist 에 차이를 남기세요.${u.mode === "only" ? "\n- 이번 글은 웹 조사 없이 이 자료만으로 씁니다. 자료에 없는 내용은 일반적인 설명에 그치고 수치·고유명사를 만들지 마세요." : ""}`;
 }
 
 export function buildUserPrompt(b: BriefInput) {
@@ -137,6 +170,7 @@ export function buildUserPrompt(b: BriefInput) {
   return `다음 기획으로 ${b.platform === "NAVER" ? "네이버 블로그" : "구글 블로거"} 원고를 작성하세요.
 
 - 핵심 키워드: ${b.keyword} — 제목(title) 맨 앞에 형태 변형 없이 그대로 넣고, focusKeyword 도 이 문구 그대로 쓰세요
+${userSourcesBlock(b.userSources)}
 - 가제: ${b.title ?? "(자유)"}
 - 관점/구성: ${b.angle || "(자유)"}
 ${b.tool ? `- 주요 도구: ${b.tool}` : ""}
@@ -148,6 +182,7 @@ ${b.tool ? `- 주요 도구: ${b.tool}` : ""}
 ${conceptRules(b.accountConcept)}
 ${b.avoidTitles?.length ? `- 이미 발행한 비슷한 글(제목·구성·예시가 겹치지 않게): ${b.avoidTitles.join(" / ")}` : ""}
 ${relatedKeywordRules(b)}
+${storyContextBlock(b.storyContext)}
 
 [최신 조사 메모 — 사실 확인에 활용, 없는 내용은 지어내지 말 것]
 ${b.researchNotes?.trim() || "(조사 메모 없음 — 요금·수치는 reviewChecklist 에 확인 필요로 남기세요)"}

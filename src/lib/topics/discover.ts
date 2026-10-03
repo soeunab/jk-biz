@@ -14,7 +14,7 @@ import {
   type AdKeyword,
 } from "./sources";
 import { INTENT_LABEL, normalizeKeyword, relevance, scoreKeyword, type KeywordMetrics, type Verification } from "./scoring";
-import { adVolumes, containsAny, deeperAutocomplete, ensureKeywordInTitle, isHeadKeyword, longtailScore, seedTokens, volumeOf, type RelatedKeyword } from "./longtail";
+import { adVolumes, containsAll, containsAny, coreOf, deeperAutocomplete, ensureKeywordInTitle, isHeadKeyword, longtailScore, seedTokens, volumeOf, type RelatedKeyword } from "./longtail";
 import { josa, ymd } from "../util";
 
 export type DiscoverOptions = {
@@ -258,14 +258,15 @@ ${table}`,
     }),
   });
 
-  // 5) 저장 — 원고 생성 때 소제목·FAQ 에 녹일 "함께 검색되는 롱테일 문구"도 같이 저장
+  // 5) 저장 — 원고 생성 때 참고할 "함께 검색되는 같은 이야기의 롱테일 문구"도 같이 저장
   const allKeys = [...sourcesByKeyword.keys()];
   const relatedFor = (kw: string): RelatedKeyword[] => {
     const n = normalizeKeyword(kw);
-    const own = tokens.filter((t) => n.includes(t));
+    const own = coreOf(tokens.filter((t) => n.includes(t)));
     if (!own.length) return [];
+    // 이 키워드가 가진 시드 핵심 토큰을 모두 포함한 문구만 (하나만 겹치는 다른 이야기는 제외)
     return allKeys
-      .filter((k) => normalizeKeyword(k) !== n && containsAny(k, own))
+      .filter((k) => normalizeKeyword(k) !== n && containsAll(k, own))
       .sort((a, b) => (volOf(b) ?? -1) - (volOf(a) ?? -1))
       .slice(0, 12)
       .map((k) => ({ keyword: k, volume: volOf(k) }));

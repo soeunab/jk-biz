@@ -15,6 +15,7 @@ import { ensureKeywordInTitle, expandKeyword, relatedOf } from "../topics/longta
 import { detectRisk, manuscriptRiskText } from "./risk";
 import { ManualPendingError } from "../llm/manual";
 import { publicUrlOf, STALE_EDIT_MSG } from "./postStatus";
+import type { StoryContext, UserSources } from "./prompts";
 
 export type AccountSettings = {
   adsenseClientId?: string;
@@ -44,10 +45,53 @@ export async function saveIfUnchanged(postId: string, startedAt: Date, data: Pri
   if (r.count !== 1) throw new Error(STALE_EDIT_MSG);
 }
 
-/** 저장된 조사 메모 텍스트 (없으면 null) */
+/** 사용자가 📎 내 자료로 다시 쓰기로 저장한 자료 (Post.research.user) */
+export type StoredUserSources = UserSources & { at: string };
+
+export function userSourcesOf(v: unknown): StoredUserSources | null {
+  const u = (v as { user?: unknown } | null)?.user as Partial<StoredUserSources> | undefined;
+  if (!u || typeof u !== "object") return null;
+  const notes = typeof u.notes === "string" ? u.notes : "";
+  const urls = Array.isArray(u.urls) ? u.urls.filter((x): x is string => typeof x === "string") : [];
+  if (!notes.trim() && !urls.length) return null;
+  return { notes, urls, mode: u.mode === "only" ? "only" : "prefer", at: typeof u.at === "string" ? u.at : "" };
+}
+
+/**
+ * 저장된 조사 메모 텍스트 (없으면 null). 사용자 제공 자료가 있으면 앞에 붙여,
+ * AI 사실 검수·시제 점검·승인 전 확인이 이 자료도 근거로 쓰게 합니다.
+ */
 export function researchNotesOf(v: unknown): string | null {
   const notes = (v as { notes?: unknown } | null)?.notes;
-  return typeof notes === "string" && notes.trim() ? notes : null;
+  const web = typeof notes === "string" && notes.trim() ? notes : null;
+  const u = userSourcesOf(v);
+  if (!u) return web;
+  const userBlock = `[사용자 제공 자료]\n${u.notes.trim()}${u.urls.length ? `\n참고 URL: ${u.urls.join(" ")}` : ""}`.trim();
+  return web ? `${userBlock}\n\n[웹 조사 메모]\n${web}` : userBlock;
+}
+
+/** 실시간 발굴 소재(origin=channels)의 사건 요약·실제 수집 기사 — 원고가 이 사건 중심으로 쓰이게 전달 */
+export function storyContextOf(signals: unknown): StoryContext | undefined {
+  const sg = (signals ?? {}) as {
+    origin?: string;
+    longtail?: { story?: { summary?: unknown } } | null;
+    evidence?: { title?: unknown; url?: unknown; press?: unknown; source?: unknown }[];
+    context?: { title?: unknown; url?: unknown; press?: unknown; source?: unknown }[];
+  };
+  if (sg.origin !== "channels") return undefined;
+  const summary = typeof sg.longtail?.story?.summary === "string" ? sg.longtail.story.summary : "";
+  const seen = new Set<string>();
+  const articles = [...(sg.evidence ?? []), ...(sg.context ?? [])]
+    .filter((a) => typeof a?.title === "string" && a.title.trim())
+    .filter((a) => (seen.has(String(a.title)) ? false : (seen.add(String(a.title)), true)))
+    .slice(0, 8)
+    .map((a) => ({
+      title: String(a.title),
+      url: typeof a.url === "string" && a.url ? a.url : null,
+      source: [a.press, a.source].find((x): x is string => typeof x === "string" && !!x.trim()) ?? "",
+    }));
+  if (!summary.trim() && !articles.length) return undefined;
+  return { summary, articles };
 }
 
 export function readManuscript(v: unknown): Manuscript | null {
@@ -174,13 +218,21 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
         });
       }
     }
-    if (relatedKeywords?.length) await log(`함께 검색되는 롱테일 ${relatedKeywords.length}개를 소제목·FAQ 에 반영하도록 전달`);
+    if (relatedKeywords?.length) await log(`함께 검색되는 문구 ${relatedKeywords.length}개를 참고용으로 전달 (같은 이야기인 것만 골라 쓰도록)`);
+    const storyContext = storyContextOf(post.topic?.signals);
+    if (storyContext) await log(`실시간 소재의 실제 수집 기사 ${storyContext.articles.length}개·사건 요약을 전달 (이 사건 중심으로 쓰도록)`);
+    const userSources = userSourcesOf(post.research);
+    if (userSources) {
+      await log(`사용자 자료 ${userSources.notes.trim().length.toLocaleString("ko-KR")}자·URL ${userSources.urls.length}개 반영(방식: ${userSources.mode === "only" ? "내 자료만" : "내 자료 우선"})`);
+    }
 
     const { manuscript, research } = await generateManuscript(
       {
         platform,
         keyword,
         relatedKeywords: relatedKeywords ?? undefined,
+        storyContext,
+        userSources: userSources ? { notes: userSources.notes, urls: userSources.urls, mode: userSources.mode } : undefined,
         title: post.topic?.title ?? post.title,
         angle: post.topic?.angle,
         persona: (post.topic?.persona ?? "GENERAL") as Persona,
@@ -220,7 +272,8 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
       where: { id: postId },
       data: {
         content: manuscript as unknown as Prisma.InputJsonValue,
-        research: research as unknown as Prisma.InputJsonValue,
+        // 사용자 제공 자료(user)는 다시 생성해도 지우지 않음 — 다음 재생성·검수에도 근거로 쓰임
+        research: { ...research, ...(userSources ? { user: userSources } : {}) } as unknown as Prisma.InputJsonValue,
         title: manuscript.title,
         slug: manuscript.slug,
         focusKeyword: manuscript.focusKeyword,

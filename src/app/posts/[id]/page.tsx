@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { accountSettings, readManuscript, researchNotesOf } from "@/lib/content/service";
+import { accountSettings, readManuscript, researchNotesOf, userSourcesOf } from "@/lib/content/service";
 import type { SeoReport } from "@/lib/content/seo";
 import { ActionButton } from "@/components/ActionButton";
 import { AutoRefresh } from "@/components/AutoRefresh";
@@ -11,6 +11,7 @@ import { ReviewPanel, MarkPublished } from "@/components/ReviewPanel";
 import { Badge, PLATFORM, POST_STATUS } from "@/components/ui";
 import { ApproveButton, RejectButton } from "@/components/ApproveButton";
 import { RepublishButton } from "@/components/RepublishButton";
+import { UserSourcesForm } from "@/components/UserSourcesForm";
 import { AiReviewCard } from "@/components/AiReviewCard";
 import { getBrand } from "@/lib/brand";
 import { readinessIssues } from "@/lib/content/readiness";
@@ -238,7 +239,10 @@ export default async function PostPage({ params, searchParams }: { params: Promi
             <div className="card flex flex-col gap-2 text-sm">
               <h3 className="font-semibold">원고 관리</h3>
               {canRegenerate(post.status) ? (
-                <ActionButton url={`/api/posts/${id}/action`} body={{ action: "regenerate" }} label="🤖 AI로 원고 다시 쓰기" confirm="현재 원고와 이미지를 새로 생성합니다. 수정 내용은 사라져요." />
+                <>
+                  <ActionButton url={`/api/posts/${id}/action`} body={{ action: "regenerate" }} label="🤖 AI로 원고 다시 쓰기" confirm="현재 원고와 이미지를 새로 생성합니다. 수정 내용은 사라져요." />
+                  <UserSourcesForm postId={id} initial={userSourcesOf(post.research)} />
+                </>
               ) : (
                 post.status !== "GENERATING" && <p className="text-xs text-gray-500">🔒 {editLockedMessage(post.status)}</p>
               )}

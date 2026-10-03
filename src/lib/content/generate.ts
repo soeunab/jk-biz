@@ -15,12 +15,13 @@ export async function generateManuscript(
 
   let researchNotes = "";
   let researchSources: { title: string; url: string }[] = [];
-  if (!opts.skipResearch) {
+  const user = brief.userSources;
+  // "내 자료만 사용" 이면 웹 조사를 하지 않음
+  const skipResearch = opts.skipResearch || user?.mode === "only";
+  if (!skipResearch) {
     try {
       await opts.log?.("최신 정보 조사 중 (웹 검색)…");
-      const researchQuestion = brief.tool
-        ? `"${brief.keyword}" 블로그 글을 쓰려고 합니다. ${brief.tool}의 ${today} 기준 최신 요금제, 주요 기능, 사용 방법, 한국어 지원, 제한사항, ${PERSONAS[brief.persona].label} 활용 사례를 조사해 주세요.`
-        : `"${brief.keyword}" 블로그 글을 쓰려고 합니다. ${today} 기준 이 주제의 최신 사실(금액·조건·기한·절차 등 공식 정보)과 ${PERSONAS[brief.persona].label}에게 실질적으로 도움이 되는 내용을 조사해 주세요.`;
+      const researchQuestion = researchQuestionFor(brief, today);
       const r = await research(researchQuestion);
       researchNotes = r.notes;
       researchSources = r.sources;
@@ -45,11 +46,45 @@ export async function generateManuscript(
 
   // 조사 출처가 원고에 빠졌으면 보강 (GEO: 출처 명시)
   if (manuscript.sources.length === 0 && researchSources.length) manuscript.sources = researchSources.slice(0, 5);
+  // 사용자가 준 참고 URL 은 출처에 포함 (중복 제거)
+  if (user?.urls.length) {
+    const have = new Set(manuscript.sources.map((x) => x.url.replace(/\/$/, "")));
+    for (const url of user.urls) {
+      if (have.has(url.replace(/\/$/, ""))) continue;
+      manuscript.sources.push({ title: hostOf(url), url });
+      have.add(url.replace(/\/$/, ""));
+    }
+  }
   // 제휴 상품은 후보 목록에 있는 것만 허용
   const allowed = new Set((brief.affiliateProducts ?? []).map((p) => p.id));
   manuscript.affiliate = manuscript.affiliate.filter((a) => allowed.has(a.productId)).slice(0, 2);
   if (brief.platform === "NAVER") manuscript.tags = manuscript.tags.map((t) => t.replace(/[#\s]/g, "")).slice(0, 10);
   return { manuscript, research: { notes: researchNotes, sources: researchSources, at: today } };
+}
+
+/** 조사 질문 — 실시간 소재는 그 사건으로, 사용자 자료가 있으면 그 자료의 확인·최신화로 범위를 좁힘 */
+export function researchQuestionFor(brief: Pick<BriefInput, "keyword" | "tool" | "persona" | "storyContext" | "userSources">, today: string): string {
+  const base = brief.tool
+    ? `"${brief.keyword}" 블로그 글을 쓰려고 합니다. ${brief.tool}의 ${today} 기준 최신 요금제, 주요 기능, 사용 방법, 한국어 지원, 제한사항, ${PERSONAS[brief.persona].label} 활용 사례를 조사해 주세요.`
+    : `"${brief.keyword}" 블로그 글을 쓰려고 합니다. ${today} 기준 이 주제의 최신 사실(금액·조건·기한·절차 등 공식 정보)과 ${PERSONAS[brief.persona].label}에게 실질적으로 도움이 되는 내용을 조사해 주세요.`;
+  const parts = [base];
+  const summary = brief.storyContext?.summary.trim();
+  if (summary) parts.push(`다음 사건에 대한 사실만 조사하고, 이름이 비슷한 다른 회사·사건은 섞지 마세요: ${summary}`);
+  const u = brief.userSources;
+  if (u && u.mode === "prefer" && (u.notes.trim() || u.urls.length)) {
+    parts.push(
+      `사용자가 제공한 자료가 있습니다. 이 자료의 사실 확인과 최신화가 목적입니다.${u.urls.length ? ` 다음 URL 의 내용을 먼저 확인하세요:\n${u.urls.map((x) => `- ${x}`).join("\n")}` : ""}${u.notes.trim() ? `\n[제공 자료 요약]\n${u.notes.trim().slice(0, 2000)}` : ""}`,
+    );
+  }
+  return parts.join("\n");
+}
+
+function hostOf(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
 
 /** API 키 없이도 전체 흐름을 확인할 수 있도록 만든 데모 원고 */

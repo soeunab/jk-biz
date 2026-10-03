@@ -24,6 +24,35 @@ export function containsAny(k: string, tokens: string[]): boolean {
   return tokens.some((t) => n.includes(t));
 }
 
+/**
+ * 어떤 주제에나 붙는 범용 수식어 — 이 단어만 같다고 같은 이야기가 아님 ("제미나이 사용법" ↔ "에어프라이어 사용법").
+ * 연관 문구가 "같은 대상"인지 판단할 때 빼고 봅니다.
+ */
+export const GENERIC_MODIFIERS = new Set(
+  [
+    "사용법", "방법", "하는법", "무료", "유료", "추천", "비교", "후기", "리뷰", "가격", "요금", "신청", "조건", "해지",
+    "뜻", "정리", "총정리", "꿀팁", "팁", "기준", "대상", "기간", "일정", "최신",
+  ].map(normalizeKeyword),
+);
+const isGeneric = (t: string) => GENERIC_MODIFIERS.has(t) || /^\d{4}년?$/.test(t);
+
+/** 핵심 토큰 = 토큰 − 범용 수식어. 범용어만 있으면 원래 토큰 전체 (예: "힉스필드 현대차 광고" → [힉스필드, 현대차, 광고]) */
+export function coreOf(tokens: string[]): string[] {
+  const core = tokens.filter((t) => !isGeneric(t));
+  return core.length ? core : tokens;
+}
+
+/** 기준 키워드의 핵심 토큰 ("청년 도약계좌 해지" → [청년, 도약계좌]) */
+export function coreTokens(base: string): string[] {
+  return coreOf(seedTokens([base]));
+}
+
+/** 핵심 토큰을 모두 포함해야 같은 이야기 — 하나만 겹치는 다른 이야기("현대차 AI 투자")는 연관 문구에서 뺌 */
+export function containsAll(k: string, tokens: string[]): boolean {
+  const n = normalizeKeyword(k);
+  return tokens.length > 0 && tokens.every((t) => n.includes(t));
+}
+
 export const volumeOf = (a?: AdKeyword | null): number | null => (a ? a.monthlyPc + a.monthlyMobile : null);
 
 /** 후보 문구들의 실제 월검색량 (검색광고). 결과에는 힌트 자신과 검색광고가 돌려준 연관 확장이 함께 들어 있음 */
@@ -64,7 +93,7 @@ export type LongtailResult = {
   /** 제목 핵심 키워드로 쓸 최적 롱테일 (헤드 키워드 제외, 실제 검색량 확인된 것 중). 없으면 null */
   best: LongtailCandidate | null;
   candidates: LongtailCandidate[];
-  /** 원고 소제목·FAQ 에 녹일 함께 검색되는 문구 (best 제외, 검색량 순) */
+  /** 함께 검색되는 같은 이야기의 문구 (best 제외, 검색량 순) — 원고에서는 관련 있는 것만 골라 씀 */
   related: RelatedKeyword[];
 };
 
@@ -82,7 +111,8 @@ export async function deeperAutocomplete(phrases: string[], top = 5): Promise<st
  */
 export async function expandKeyword(base: string, opts: { network?: boolean; relatedSearch?: boolean; docs?: number } = {}): Promise<LongtailResult> {
   const network = opts.network ?? true;
-  const tokens = seedTokens([base]);
+  // 기준 키워드의 핵심 토큰을 "모두" 포함한 문구만 후보 — "힉스필드 현대차" 기준에 "현대차 AI 투자" 같은 다른 이야기가 섞이지 않게
+  const tokens = coreTokens(base);
   const cands = new Map<string, { keyword: string; sources: Set<string> }>();
   const add = (k: string, src: string) => {
     const text = k.trim().replace(/\s+/g, " ");
@@ -104,10 +134,10 @@ export async function expandKeyword(base: string, opts: { network?: boolean; rel
     (await deeperAutocomplete(nav.filter((k) => normalizeKeyword(k) !== normalizeKeyword(base)))).forEach((k) => add(k, "naver-ac"));
     ad = await adVolumes([...cands.values()].map((c) => c.keyword)).catch(() => new Map<string, AdKeyword>());
     // 검색광고 연관 확장 중 기준 키워드를 포함하는 문구도 롱테일 후보로
-    for (const a of ad.values()) if (containsAny(a.keyword, tokens)) add(a.keyword, "naver-searchad");
+    for (const a of ad.values()) if (containsAll(a.keyword, tokens)) add(a.keyword, "naver-searchad");
   }
   const list = [...cands.entries()]
-    .filter(([, c]) => c.sources.has("seed") || containsAny(c.keyword, tokens))
+    .filter(([, c]) => c.sources.has("seed") || containsAll(c.keyword, tokens))
     .map(([n, c]) => ({ n, c, volume: volumeOf(ad.get(n)) }))
     .sort((a, b) => (b.volume ?? -1) - (a.volume ?? -1));
 

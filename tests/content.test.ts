@@ -6,6 +6,8 @@ import { similarity } from "@/lib/content/similarity";
 import { ManuscriptSchema } from "@/lib/content/types";
 import { DEFAULT_BRAND } from "@/lib/brand";
 import { josa } from "@/lib/util";
+import { buildSystemPrompt, buildUserPrompt, storyContextBlock, userSourcesBlock } from "@/lib/content/prompts";
+import { researchQuestionFor } from "@/lib/content/generate";
 
 const base = { keyword: "제미나이 사용법", persona: "OFFICE" as const, tool: "Gemini", today: "2026-09-28" };
 
@@ -102,5 +104,46 @@ describe("media path", () => {
     expect(mediaPath(["posts", "a.png"])).toBe(`${MEDIA_DIR}/posts/a.png`);
     expect(mediaPath(["..", "..", ".env"])).toBeNull();
     expect(mediaPath(["posts", "..", "..", "dev.db"])).toBeNull();
+  });
+});
+
+describe("원고 사실성 — 소설 방지 프롬프트 (B2·B3·B4)", () => {
+  const brief = { platform: "NAVER" as const, keyword: "힉스필드 현대차 광고", persona: "OFFICE" as const, today: "2026-10-03" };
+
+  it("연관 문구는 골라 쓰기, 관계·회사를 끌어오지 않기 — '검색량이 큰 것부터 녹여' 지시는 없음", () => {
+    const p = buildUserPrompt({ ...brief, relatedKeywords: [{ keyword: "현대차 AI 투자", volume: 900 }] });
+    expect(p).toContain("골라 써도");
+    expect(p).toContain("끌어오지 마세요");
+    expect(p).toContain("본문에 실제로 쓴 문구만");
+    expect(p).not.toMatch(/검색량이 큰 것부터[^\n]*녹여/);
+  });
+
+  it("사실성 규칙에 관계 추측 금지", () => {
+    const sys = buildSystemPrompt(DEFAULT_BRAND, "NAVER");
+    expect(sys).toContain("관계(협업·투자·인수·공급·경쟁)를 추측해 쓰지 마세요");
+    expect(sys).toContain("연관 검색어에 함께 나온다는 이유만으로 관계를 만들지 마세요");
+  });
+
+  it("실시간 소재의 수집 기사·요약 블록이 조사 메모 앞에 들어감", () => {
+    const story = { summary: "힉스필드가 현대차 신차 광고 영상을 AI 로 제작", articles: [{ title: "현대차, AI 영상 광고 공개", url: "https://news/1", source: "한국경제" }] };
+    const p = buildUserPrompt({ ...brief, storyContext: story });
+    expect(p).toContain("[이 소재가 뜬 이유 — 실제 수집 기사]");
+    expect(p).toContain("다른 사건·회사로 확장하지 마세요");
+    expect(p.indexOf("실제 수집 기사")).toBeLessThan(p.indexOf("[최신 조사 메모"));
+    expect(storyContextBlock(undefined)).toBe("");
+    expect(researchQuestionFor({ ...brief, storyContext: story }, "2026-10-03")).toContain("다음 사건에 대한 사실만");
+  });
+
+  it("사용자 자료 블록은 핵심 키워드 바로 다음(최상단), only 모드 안내 포함", () => {
+    const u = { notes: "현대차는 9월 힉스필드로 만든 광고를 공개했다.", urls: ["https://example.com/a"], mode: "only" as const };
+    const p = buildUserPrompt({ ...brief, userSources: u });
+    expect(p).toContain("[사용자 제공 자료 — 최우선 근거]");
+    expect(p.indexOf("최우선 근거")).toBeLessThan(p.indexOf("- 가제:"));
+    expect(p).toContain("자료를 우선하고 reviewChecklist 에 차이를 남기세요");
+    expect(p).toContain("웹 조사 없이");
+    expect(userSourcesBlock({ notes: " ", urls: [], mode: "prefer" })).toBe("");
+    const q = researchQuestionFor({ ...brief, userSources: { ...u, mode: "prefer" } }, "2026-10-03");
+    expect(q).toContain("사실 확인과 최신화");
+    expect(q).toContain("https://example.com/a");
   });
 });

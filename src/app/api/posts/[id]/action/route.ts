@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import { fail, handle, ok } from "@/lib/api";
 import { enqueue, enqueueOnce } from "@/lib/jobs/queue";
@@ -38,14 +40,24 @@ type Action =
  */
 export const POST = handle(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const id = (await params).id;
-  const { action, url, force, reason } = (await req.json()) as { action: Action; url?: string; force?: boolean; reason?: string };
+  const { action, url, force, reason, userSources } = (await req.json()) as { action: Action; url?: string; force?: boolean; reason?: string; userSources?: unknown };
   const post = await db.post.findUniqueOrThrow({ where: { id }, include: { account: true } });
 
   switch (action) {
     case "regenerate": {
       // 공개·승인된 글을 다시 쓰면 블로그 글과 프로그램 원고가 어긋나고, 다음 발행 때 라이브 글을 덮어쓸 수 있음
       if (!canRegenerate(post.status)) return fail(REGENERATE_BLOCKED_MSG);
-      await db.post.update({ where: { id }, data: { status: "GENERATING", error: null } });
+      // 📎 내 자료로 다시 쓰기 — 자료는 원고의 조사 기록(research.user)에 저장해 이번·다음 재생성과 AI 검수가 근거로 씀
+      let research: Prisma.InputJsonValue | undefined;
+      if (userSources !== undefined) {
+        const parsed = UserSourcesInput.safeParse(userSources);
+        if (!parsed.success) return fail(`자료 형식 오류: ${parsed.error.issues[0]?.message ?? ""}`);
+        const { notes, urls, mode } = parsed.data;
+        const rest = { ...((post.research && typeof post.research === "object" ? post.research : {}) as Record<string, unknown>) };
+        delete rest.user;
+        research = (notes.trim() || urls.length ? { ...rest, user: { notes: notes.trim(), urls, mode, at: new Date().toISOString() } } : rest) as Prisma.InputJsonValue;
+      }
+      await db.post.update({ where: { id }, data: { status: "GENERATING", error: null, ...(research !== undefined ? { research } : {}) } });
       return ok({ jobId: (await enqueueOnce("post.generate", { postId: id })).id });
     }
     case "images":
@@ -111,6 +123,15 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
     default:
       return fail("알 수 없는 작업");
   }
+});
+
+/** 사용자 제공 자료 — 서버는 URL 을 직접 내려받지 않음(조사 단계 AI 가 읽음) */
+const UserSourcesInput = z.object({
+  notes: z.string().max(30_000, "자료 텍스트는 30,000자까지 넣을 수 있어요."),
+  urls: z
+    .array(z.string().trim().url("URL 형식이 올바르지 않아요.").refine((u) => /^https?:\/\//i.test(u), "http(s) 주소만 넣을 수 있어요."))
+    .max(10, "참고 URL 은 10개까지 넣을 수 있어요."),
+  mode: z.enum(["prefer", "only"]),
 });
 
 function naverAlreadyUploadedMsg(logNo: string) {
