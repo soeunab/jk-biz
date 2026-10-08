@@ -37,7 +37,7 @@ vi.mock("@/lib/llm", async (orig) => ({
 import { analyzeItems, discoverFromChannels, isSeenStory, reclassifyAmbiguous, rescore, seenStories } from "@/lib/topics/channels/discover";
 import { buildGroups } from "@/lib/topics/channels/crossref";
 import { DEFAULT_CHANNEL_CONFIG, ORIGINAL_CHANNEL_CONFIG } from "@/lib/topics/channels/config";
-import { AI_FOCUS_TERMS, classifyWeighted, hasWord, matchesFocus, NO_RESTRICTION, pickCategory } from "@/lib/topics/channels/filters";
+import { classifyWeighted, hasWord, NO_RESTRICTION, pickCategory } from "@/lib/topics/channels/filters";
 import { computeMetrics } from "@/lib/topics/channels/scoring";
 import { clusterAgeMinutes, parseAgeMinutes, parseAgoMinutes } from "@/lib/topics/channels/text";
 import type { ChannelItem } from "@/lib/topics/channels/types";
@@ -103,9 +103,8 @@ describe("카테고리 분류 (#3)", () => {
   it("영문 낱말은 단어 경계로만", () => {
     expect(hasWord("costco 할인", "OS")).toBe(false);
     expect(hasWord("새 OS 업데이트", "OS")).toBe(true);
-    expect(matchesFocus("OpenAI 새 모델", ["AI"])).toBe(false);
-    expect(matchesFocus("OpenAI 새 모델", AI_FOCUS_TERMS)).toBe(true);
-    expect(matchesFocus("오픈AI 새 모델", ["AI"])).toBe(true);
+    expect(hasWord("OpenAI 새 모델", "AI")).toBe(false);
+    expect(hasWord("오픈AI 새 모델", "AI")).toBe(true);
   });
   it("수집 페이지 'A,B' 지정은 제목으로 둘 중 하나", () => {
     expect(pickCategory("다낭 무비자 입국 확대", "국내여행,세계여행")).toBe("세계여행");
@@ -184,20 +183,13 @@ describe("신선도 필터 (#4)", () => {
   });
 });
 
-describe("AI 재분류·관심 주제 (#3)", () => {
+describe("AI 재분류 (#3)", () => {
   const items = () => [
     art("클로드 새 모델 공개 성능 비교"),
     art("오픈AI 기업가치 상장 추진 IPO"),
     art("삼성전자 3분기 실적 영업이익 증가"),
     art("출시 업데이트 소식"),
   ];
-
-  it("관심 주제(AI)면 분류가 경제여도 이 블로그 소재, AI 아닌 소재는 제외", () => {
-    const a = analyzeItems(items(), ["IT·컴퓨터"], DEFAULT_CHANNEL_CONFIG, AI_FOCUS_TERMS);
-    expect(a.ranked.map((g) => g.label).sort()).toEqual(["오픈AI 기업가치 상장 추진 IPO", "클로드 새 모델 공개 성능 비교"]);
-    expect(a.ranked.every((g) => g.category === "IT·컴퓨터" && !g.reasons.some((r) => r.includes("주제 밖")))).toBe(true);
-    expect(a.offTopic.map((g) => g.label)).toContain("삼성전자 3분기 실적 영업이익 증가");
-  });
 
   it("애매한 소재만 AI 에 보내고, 결과로 다시 점수화", async () => {
     const a = analyzeItems(items(), ["IT·컴퓨터"]);

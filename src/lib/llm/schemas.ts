@@ -1,9 +1,9 @@
 import type { z } from "zod";
 import { ManuscriptSchema, SectionSchema } from "../content/types";
 import { ReviewSchema } from "../content/review";
-import { IdeaSchema } from "../topics/discover";
-import { ChannelCategorySchema, ChannelIdeaSchema } from "../topics/channels/discover";
-import { KeywordCheckSchema, StorySchema } from "../topics/channels/keywords";
+import { ChannelCategorySchema } from "../topics/channels/discover";
+import { StorySchema } from "../topics/channels/keywords";
+import { RelatedCheckSchema, TitleSchema } from "../topics/expand";
 import { CardNewsSchema } from "../cardnews";
 import { StrategySchema } from "../insights/engine";
 
@@ -12,11 +12,10 @@ export const SCHEMAS: Record<string, z.ZodType> = {
   manuscript: ManuscriptSchema,
   section: SectionSchema,
   factReview: ReviewSchema,
-  topicIdeas: IdeaSchema,
-  channelIdeas: ChannelIdeaSchema,
+  topicTitles: TitleSchema,
   channelCategories: ChannelCategorySchema,
   channelStories: StorySchema,
-  channelKeywordCheck: KeywordCheckSchema,
+  relatedCheck: RelatedCheckSchema,
   cardnews: CardNewsSchema,
   strategy: StrategySchema,
 };

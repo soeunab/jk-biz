@@ -3,9 +3,9 @@ import { PageHeader } from "@/components/ui";
 
 export const dynamic = "force-static";
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, id }: { title: string; children: React.ReactNode; id?: string }) {
   return (
-    <section className="card">
+    <section id={id} className="card scroll-mt-4">
       <h2 className="mb-3 text-lg font-bold">{title}</h2>
       <div className="space-y-2 text-sm leading-relaxed text-gray-700">{children}</div>
     </section>
@@ -22,7 +22,7 @@ export default function GuidePage() {
         <p>API 키 방식은 Claude 구독과 <b>별개로 사용량만큼 과금</b>됩니다. 구독 중이라면 API 키 없이 아래처럼 나눠 씁니다. 현재 배정은 <Link className="text-indigo-600" href="/settings">설정 → AI 담당 · 비용</Link>에서 확인하세요.</p>
         <ul className="list-disc space-y-1 pl-5">
           <li><b>원고·조사·사실 검수</b> → 맥미니의 <b>Claude Code</b>(구독 로그인). 추가 요금 없이 구독 사용 한도만 씁니다. 터미널에서 <code>claude</code> → <code>/login</code> 한 번이면 됩니다.</li>
-          <li><b>주제 기획 문구·카드뉴스·발전 제안 요약</b> → <b>로컬 Ollama</b>(gemma4:12b). 무료·무제한이라 구독 한도를 아낍니다.</li>
+          <li><b>주제 발굴·카드뉴스·발전 제안 요약</b> → 이것도 <b>Claude 구독</b>. 로컬 모델(Ollama)은 키워드·제목 품질이 떨어져 기본으로 쓰지 않아요(원하면 설정에서 직접 지정).</li>
           <li><b>구독 한도가 찼거나 Claude Code 가 꺼져 있으면</b> → 작업이 <b>✋ 수동 입력 대기</b>로 멈춥니다. <Link className="text-indigo-600" href="/manual">수동 작업함</Link>에서 📋 지시문 복사 → 데스크탑 Claude 에 붙여 넣기(웹 검색 켜기) → 받은 답을 그대로 붙여 넣으면 나머지는 자동으로 이어집니다.</li>
           <li>이미지는 화면 캡처·무료 스톡·템플릿으로 만들어 0원입니다.</li>
         </ul>
@@ -49,7 +49,24 @@ export default function GuidePage() {
           <li><b>미확인</b>으로 표시된 지표는 데이터가 없어 점수 계산에서 빠진 것입니다. 숫자를 지어내지 않습니다.</li>
           <li><b>확인 n/3</b>은 검색량·경쟁·트렌드 중 실제 데이터로 확인된 지표 수입니다.</li>
         </ul>
-        <p>정확한 검색량을 보려면 <Link className="text-indigo-600" href="/settings">설정</Link>에서 네이버 검색광고 API 연동 여부를 확인하고, 주제 발굴 화면의 <b>연관 키워드 확장</b>을 사용하세요.</p>
+        <p>정확한 검색량을 보려면 <Link className="text-indigo-600" href="/settings">설정</Link>에서 네이버 검색광고 API 연동 여부를 확인하세요. 주제 발굴은 두 가지예요: <b>① 실시간 트렌드</b> — 6시간 이내 화제인 사건의 메인 키워드를 발굴해 골라서 원고 생성 / <b>② 검색어 기반</b> — 직접 입력한 키워드로 롱테일 키워드(검색량·문서수·비율)를 찾고, 고른 키워드에서 [제목 6가지 만들기] → 원고 생성.</p>
+      </Section>
+
+      <Section id="golden" title="2-1. 🏆 황금키워드 발굴 — 구간·비율 보는 법">
+        <p>
+          <b>시드 없이</b> 네이버 검색광고의 업종별 키워드(업종당 최대 1,200개)를 모두 모으고, 상위 키워드는 자동완성으로 한 번 더 넓혀
+          검색량 구간별로 <b>블로그 문서수 ÷ 월검색량</b> 비율이 낮은 순으로 보여 줍니다. 매일 새벽 3시에 자동으로 갱신되고, [🏆 황금키워드 발굴] 버튼으로 바로 돌릴 수도 있어요.
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>구간(월검색량): 🌱 초보자 100~500 · 💧 중급자 500~2천 · 🔥 고급자 2천~1만 · ⚡ 전문가 1만~5만 · 💎 마스터 5만~10만 · 🏆 챌린저 10만~50만 · 👑 레전드 50만 이상. 블로그가 작을수록 낮은 구간부터 노리세요.</li>
+          <li>비율이 낮을수록 검색 수요에 비해 글이 적다는 뜻이에요. <b>후보를 찾는 기준일 뿐 상위 노출을 보장하지 않습니다</b> — 블로그 지수·글 품질·검색 의도가 더 중요해요.</li>
+          <li>⚠️ 최근 30일 발행이 많으면 누적 문서가 적어도 지금 경쟁이 큰 키워드예요. ⚡ 이슈형은 한때 몰렸다가 식은 수요라 문서가 적어 보이는 착시일 수 있어요.</li>
+          <li>업종 키워드에는 업체 홍보용 검색어(지역+업체·견적 문의 등)가 많아 AI 가 블로그로 답할 수 있는지 한 번 거르고(가벼운 호출, 판정은 저장해 재사용), 어울리는 내 블로그도 골라 줘요. 내 블로그 칩으로 그 블로그에 맞는 키워드만 볼 수 있어요.</li>
+          <li>오른쪽 상세의 골든 점수·진단(유행 종료·모바일 타겟·경쟁 증가)은 규칙으로 계산해 AI 토큰을 쓰지 않아요.</li>
+          <li>마음에 드는 키워드는 [🔎 롱테일 발굴]로 ③ 검색어 기반 발굴을 이어서 하거나, [⭐ 주제로 저장] 후 주제 목록에서 제목·원고를 만드세요.</li>
+          <li>문서수·최근 30일 발행 수는 네이버 <b>블로그 섹션 검색 화면 값</b>으로 재요(공식 API 월 한도 24,950회를 쓰지 않음, 1,000 이상은 &quot;1,000+&quot;). 검색량 1만 이상인데 1,000+ 인 키워드만 공식 API 로 정확히 확인해요(실행당 최대 100회).</li>
+          <li>한 번 실행에 화면 조회 최대 1만 회(초당 2회)를 약 10분 조각으로 나눠 이어서 돌리고, 조각 사이에는 원고 생성 같은 다른 작업이 먼저 돌아요. 결과는 저장해 두고 14일간 재사용해서 실행할수록 &quot;미측정&quot;이 줄어요. 화면 조회가 막히면 자동으로 멈춰요.</li>
+        </ul>
       </Section>
 
       <Section title="3. AI가 하지 않는 것 (의도된 설계)">

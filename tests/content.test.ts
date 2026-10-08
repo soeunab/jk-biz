@@ -4,7 +4,7 @@ import { auditManuscript } from "@/lib/content/seo";
 import { manuscriptText, renderBlogger, renderNaverSegments } from "@/lib/content/render";
 import { similarity } from "@/lib/content/similarity";
 import { ManuscriptSchema } from "@/lib/content/types";
-import { DEFAULT_BRAND } from "@/lib/brand";
+import { DEFAULT_BRAND, PROGRAM_DISCLOSURE } from "@/lib/brand";
 import { josa } from "@/lib/util";
 import { buildSystemPrompt, buildUserPrompt, storyContextBlock, userSourcesBlock } from "@/lib/content/prompts";
 import { researchQuestionFor } from "@/lib/content/generate";
@@ -48,7 +48,9 @@ describe("manuscript", () => {
     expect(html).not.toMatch(/<(div|p|table|nav)[^>]*style="[^"]*(background|border)/); // 색·테두리는 테마 CSS 가 담당
     expect(html).toContain('class="separator"'); // 썸네일은 블로거 '아주 크게 + 가운데' 형식
     expect(html.match(/adsbygoogle/g)?.length).toBeGreaterThanOrEqual(2);
-    expect(html).toContain(DEFAULT_BRAND.disclosure.affiliate);
+    // 쿠팡 상품은 쿠팡 파트너스 정책 문구 + 링크 옆 표시
+    expect(html).toContain(PROGRAM_DISCLOSURE.COUPANG);
+    expect(html).toContain("(쿠팡 파트너스 링크)");
     expect(html).toContain('rel="sponsored noopener"');
     expect(html).not.toMatch(/<script>[^<]*<\/script>\s*$/); // JSON-LD 는 type 지정
   });
@@ -80,6 +82,30 @@ describe("manuscript", () => {
     // 소제목은 네이버 실제 "소제목" 서식으로 넣도록 별도 세그먼트로 분리됨 (HTML <h2> 붙여넣기는 인식 안 됨)
     expect(segs.some((s) => s.type === "heading" && s.text === "자주 묻는 질문")).toBe(true);
     expect(m.sections.every((sec) => segs.some((s) => s.type === "heading" && s.text === sec.heading))).toBe(true);
+    // 모든 소제목 바로 위에 구분선(가장 긴 "구분선 2"는 발행 시 선택) — 사용자 지정 양식
+    const headingIdx = segs.flatMap((s, i) => (s.type === "heading" ? [i] : []));
+    expect(headingIdx.length).toBeGreaterThan(1);
+    expect(headingIdx.every((i) => segs[i - 1]?.type === "divider")).toBe(true);
+    expect(segs.filter((s) => s.type === "divider")).toHaveLength(headingIdx.length);
+  });
+
+  it("제휴 고지 문구는 각 프로그램이 정한 원문 그대로", () => {
+    expect(PROGRAM_DISCLOSURE.COUPANG).toBe("이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.");
+    expect(PROGRAM_DISCLOSURE.SHOPPING_CONNECT).toBe("이 포스팅은 네이버 쇼핑 커넥트 활동의 일환으로, 판매 발생 시 수수료를 제공받습니다.");
+  });
+
+  it("네이버 쇼핑 커넥트 고지는 썸네일보다 앞, 글 맨 첫 문단에 본문 크기로", () => {
+    const m = mockManuscript({ ...base, platform: "NAVER", affiliateProducts: [{ id: "p1", name: "키보드" }] });
+    const segs = renderNaverSegments(m, {
+      brand: DEFAULT_BRAND,
+      images: [{ slot: "thumbnail", src: "/t.png", localPath: "/tmp/t.png", alt: "t" }],
+      products: [{ id: "p1", name: "키보드", url: "https://link", program: "SHOPPING_CONNECT" }],
+    });
+    expect(segs[0].type).toBe("html");
+    const first = segs[0] as { type: "html"; html: string };
+    expect(first.html).toContain(PROGRAM_DISCLOSURE.SHOPPING_CONNECT);
+    expect(first.html).not.toContain("font-size:13px"); // 회색 작은 글씨가 아님
+    expect(segs[1]).toMatchObject({ type: "image", localPath: "/tmp/t.png" });
   });
 
   it("similarity detects near-duplicates across platforms", () => {

@@ -21,7 +21,7 @@ async function postsByPath(accountId: string) {
   return new Map(posts.flatMap((p) => (pathOf(p.remoteUrl) ? [[pathOf(p.remoteUrl)!, p.id] as const] : [])));
 }
 
-async function upsertPostMetric(postId: string, date: Date, source: string, data: { pageviews?: number; clicks?: number; impressions?: number; position?: number }) {
+async function upsertPostMetric(postId: string, date: Date, source: string, data: { pageviews?: number; clicks?: number; impressions?: number; position?: number; engagementSec?: number }) {
   await db.postMetric.upsert({
     where: { postId_date_source: { postId, date, source } },
     create: { postId, date, source, ...data },
@@ -36,13 +36,13 @@ async function syncGa4(account: Account, log: Log) {
   const map = await postsByPath(account.id);
   const daily = new Map<string, { pv: number; users: number }>();
   let matched = 0;
-  for (const { date: d, pagePath: p, pageviews: pv, users } of rows) {
+  for (const { date: d, pagePath: p, pageviews: pv, users, engagementSec } of rows) {
     const cur = daily.get(d) ?? { pv: 0, users: 0 };
     daily.set(d, { pv: cur.pv + pv, users: cur.users + users });
     const postId = map.get(p.replace(/\/$/, ""));
     if (postId) {
       matched++;
-      await upsertPostMetric(postId, parseYmd(d), "GA4", { pageviews: pv });
+      await upsertPostMetric(postId, parseYmd(d), "GA4", { pageviews: pv, engagementSec });
     }
   }
   for (const [d, v] of daily) {

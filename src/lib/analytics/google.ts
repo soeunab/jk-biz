@@ -9,7 +9,7 @@ import { daysAgo, ymd } from "../util";
  * 그래서 MCP 로 본 값과 DB 에 동기화된 값을 비교하면 동기화 로직이 맞는지 바로 확인할 수 있어요.
  */
 
-export type Ga4Row = { date: string; pagePath: string; pageviews: number; users: number };
+export type Ga4Row = { date: string; pagePath: string; pageviews: number; users: number; /** 참여 시간 합계(초) — 체류시간 */ engagementSec: number };
 export type GscRow = { keys: string[]; clicks: number; impressions: number; ctr: number; position: number };
 export type AdsenseRow = { date: string; domain: string; amount: number };
 
@@ -32,14 +32,20 @@ export async function fetchGa4Rows(account: Account, opts: { days?: number; page
     requestBody: {
       dateRanges: [{ startDate: `${opts.days ?? 30}daysAgo`, endDate: "yesterday" }],
       dimensions: [{ name: "date" }, { name: "pagePath" }],
-      metrics: [{ name: "screenPageViews" }, { name: "activeUsers" }],
+      metrics: [{ name: "screenPageViews" }, { name: "activeUsers" }, { name: "userEngagementDuration" }],
       ...(opts.pagePath ? { dimensionFilter: { filter: { fieldName: "pagePath", stringFilter: { matchType: "BEGINS_WITH", value: opts.pagePath } } } } : {}),
       limit: "10000",
     },
   });
   return (res.data.rows ?? []).map((row) => {
     const [date, pagePath] = (row.dimensionValues ?? []).map((v) => v.value ?? "");
-    return { date, pagePath, pageviews: Number(row.metricValues?.[0]?.value ?? 0), users: Number(row.metricValues?.[1]?.value ?? 0) };
+    return {
+      date,
+      pagePath,
+      pageviews: Number(row.metricValues?.[0]?.value ?? 0),
+      users: Number(row.metricValues?.[1]?.value ?? 0),
+      engagementSec: Number(row.metricValues?.[2]?.value ?? 0),
+    };
   });
 }
 

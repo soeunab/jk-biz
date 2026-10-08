@@ -5,8 +5,12 @@ import { ActionButton } from "@/components/ActionButton";
 import { TrafficChart, RevenueChart, SourceBars } from "@/components/Charts";
 import { Badge, PageHeader, PLATFORM, Stat, ScoreBar } from "@/components/ui";
 import { formatKRW, formatNumber } from "@/lib/util";
-import { INSIGHT_TYPE, REVENUE_SOURCE } from "@/lib/labels";
+import { AD_REVENUE_SOURCES, INSIGHT_TYPE, REVENUE_SOURCE } from "@/lib/labels";
 import { costLabel, providerLabel, routeFor } from "@/lib/llm";
+import { readClaudeUsage } from "@/lib/llm/usage";
+import { ClaudeUsageCard } from "@/components/ClaudeUsageCard";
+import { GoldenTierGrid } from "@/components/GoldenTierGrid";
+import { tierCounts } from "@/lib/topics/golden";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +26,13 @@ export default async function Home() {
     db.topic.findMany({ where: { status: "NEW", verification: { not: "UNVERIFIED" } }, orderBy: [{ totalScore: "desc" }, { confidence: "desc" }], take: 5 }),
     db.insight.findMany({ where: { status: "OPEN" }, orderBy: [{ priority: "asc" }, { createdAt: "desc" }], take: 5 }),
   ]);
-  const [writeP, lightP, manualPending] = await Promise.all([routeFor("write"), routeFor("light"), db.manualRequest.count({ where: { status: "PENDING" } })]);
+  const [writeP, lightP, manualPending, claudeUsage, goldenCounts] = await Promise.all([routeFor("write"), routeFor("light"), db.manualRequest.count({ where: { status: "PENDING" } }), readClaudeUsage(), tierCounts()]);
   const pv = series.reduce((a, p) => a + p.pageviews, 0);
   const rev = series.reduce((a, p) => a + p.revenue, 0);
   const pv7 = series.slice(-7).reduce((a, p) => a + p.pageviews, 0);
+  // 수익원 다변화 — 광고(애드센스·애드포스트)에만 기대면 AI 요약·광고 정책 변화에 취약 (플레이북: 광고 외 수익원을 반드시 붙일 것)
+  const srcTotal = sources.reduce((a, s) => a + s.amount, 0);
+  const nonAdShare = srcTotal ? sources.filter((s) => !AD_REVENUE_SOURCES.includes(s.source)).reduce((a, s) => a + s.amount, 0) / srcTotal : null;
 
   return (
     <div>
@@ -42,7 +49,7 @@ export default async function Home() {
       />
       {writeP === "mock" ? (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          현재 <b>데모 모드</b>(LLM_PROVIDER=mock)입니다. 샘플 원고로 전체 흐름을 체험할 수 있어요. 실제 원고는 Claude 구독(Claude Code)·로컬 Ollama·수동 모드로
+          현재 <b>데모 모드</b>(LLM_PROVIDER=mock)입니다. 샘플 원고로 전체 흐름을 체험할 수 있어요. 실제 원고는 Claude 구독(Claude Code)·수동 모드로
           추가 비용 없이 만들 수 있어요. (<Link className="underline" href="/settings">설정 확인</Link>)
         </div>
       ) : (
@@ -56,12 +63,22 @@ export default async function Home() {
         </div>
       )}
 
+      {(writeP === "claude-code" || lightP === "claude-code" || claudeUsage) && <ClaudeUsageCard usage={claudeUsage} />}
+
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Stat label="30일 조회수" value={formatNumber(pv)} sub={`최근 7일 ${formatNumber(pv7)}`} />
         <Stat label="30일 수익" value={formatKRW(rev)} sub={pv ? `RPM ${formatKRW((rev / pv) * 1000)}` : "RPM -"} />
         <Stat label="검수 대기" value={(counts.PRIVATE ?? 0) + (counts.APPROVED ?? 0)} sub={`원고 완료 ${counts.DRAFT ?? 0}`} />
         <Stat label="발행 완료" value={counts.PUBLISHED ?? 0} sub={`생성 중 ${counts.GENERATING ?? 0}`} />
         <Stat label="신규 주제 후보" value={await db.topic.count({ where: { status: "NEW" } })} />
+      </div>
+
+      <div className="card mt-6">
+        <div className="mb-3">
+          <h2 className="font-semibold">🏆 황금키워드 구간</h2>
+          <p className="text-xs text-gray-500">월간 검색량 기준 · 클릭하면 주제 발굴에서 해당 구간의 키워드(비율 좋은 순)를 보여 줘요</p>
+        </div>
+        <GoldenTierGrid counts={goldenCounts} hrefFor={(t) => `/topics?golden=${t}#golden`} />
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
@@ -72,6 +89,12 @@ export default async function Home() {
         <div className="card">
           <h2 className="mb-3 font-semibold">수익원별 (30일)</h2>
           <SourceBars rows={sources.map((s) => ({ label: REVENUE_SOURCE[s.source] ?? s.source, amount: s.amount }))} />
+          {nonAdShare != null && (
+            <p className="mt-2 text-xs text-gray-500" title="쇼핑커넥트·쿠팡·메이트·협찬처럼 광고가 아닌 수익의 비중. 광고 수익만 있으면 AI 요약·광고 정책 변화에 취약해요">
+              광고 외 수익 비중 <b className={nonAdShare >= 0.3 ? "text-emerald-700" : "text-amber-700"}>{Math.round(nonAdShare * 100)}%</b>
+              {nonAdShare < 0.3 && " — 제휴·협찬 수익을 늘려 보세요"}
+            </p>
+          )}
           <div className="mt-4 border-t pt-3">
             <h3 className="mb-1 text-sm font-semibold">일별 수익</h3>
             <RevenueChart data={series} />

@@ -4,6 +4,7 @@ import type { JobContext } from "../jobs/queue";
 import { bloggerPublish, bloggerSaveDraft } from "./blogger";
 import { naverMakePublic, naverPublishPrivate } from "./naver";
 import { publishCardNews } from "./social";
+import { markPushed, syncRemote } from "./remote";
 import type { PublishResult } from "./types";
 import { NAVER_UNCONFIRMED, NAVER_UNCONFIRMED_MSG, publicUrlOf, PUBLISH_PRIVATE_ALLOWED } from "../content/postStatus";
 
@@ -39,6 +40,8 @@ export async function publishPrivate(postId: string, ctx?: JobContext) {
     // 블로거 초안은 공개 주소가 없음(편집 주소는 쓰지 않음) — 공개 발행 때 실제 주소가 들어감
     data: { status: "PRIVATE", privateAt: new Date(), remoteId: result.remoteId ?? post.remoteId, remoteUrl: post.platform === "BLOGGER" ? null : (result.remoteUrl ?? post.remoteUrl), error: null },
   });
+  // 올라간 직후 본문을 기준으로 저장 — 이후 블로그에서 고쳤는지 비교 (실패해도 발행은 성공)
+  if (!(await isDemo(post.accountId))) await markPushed(postId, log).catch(() => undefined);
   return result;
 }
 
@@ -51,10 +54,10 @@ export async function publishPublic(postId: string, ctx?: JobContext) {
   if (await isDemo(post.accountId)) {
     await log("데모 계정 — 공개 발행을 시뮬레이션합니다.");
     result = { remoteId: post.remoteId ?? undefined, remoteUrl: `https://example.com/demo/${post.id}` };
-  } else if (post.platform === "BLOGGER") {
-    result = await bloggerPublish(postId, log);
   } else {
-    result = await naverMakePublic(postId, log);
+    // 공개 직전에 블로그 본문을 다시 읽어 둠 — 비공개 발행 뒤 블로그에서 고친 내용을 스튜디오에 남김 (공개 전환은 블로그 본문을 바꾸지 않음)
+    await syncRemote(postId, log).catch((e) => log(`블로그 본문 확인 건너뜀: ${(e as Error).message.split("\n")[0]}`));
+    result = post.platform === "BLOGGER" ? await bloggerPublish(postId, log) : await naverMakePublic(postId, log);
   }
   await db.post.update({
     where: { id: postId },

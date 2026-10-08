@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Spinner } from "./ActionButton";
 import { useSubmit } from "./Forms";
+import { REVENUE_SOURCE } from "@/lib/labels";
 
 export function CsvImport() {
   const [kind, setKind] = useState<"metrics" | "revenue">("revenue");
@@ -79,11 +80,9 @@ export function RevenueForm({ accounts }: { accounts: { id: string; name: string
       <div>
         <label className="label">수익원</label>
         <select className="input" value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })}>
-          <option value="ADPOST">네이버 애드포스트</option>
-          <option value="SHOPPING_CONNECT">네이버 쇼핑커넥트</option>
-          <option value="ADSENSE">구글 애드센스</option>
-          <option value="COUPANG">쿠팡파트너스</option>
-          <option value="OTHER">기타</option>
+          {Object.entries(REVENUE_SOURCE).map(([v, label]) => (
+            <option key={v} value={v}>{label}</option>
+          ))}
         </select>
       </div>
       <div><label className="label">금액(원)</label><input className="input" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></div>

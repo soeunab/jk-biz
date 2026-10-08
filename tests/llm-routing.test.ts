@@ -116,11 +116,22 @@ async function llm() {
 }
 
 describe("작업별 라우팅", () => {
-  it("자동: Claude Code 설치 + Ollama 실행 중 → 원고·조사=구독, 가벼운 작업=로컬", async () => {
+  it("자동: Ollama 가 실행 중이어도 모든 작업을 구독 Claude 로 (로컬은 명시할 때만)", async () => {
     const { routeFor } = await llm();
     expect(await routeFor("write")).toBe("claude-code");
     expect(await routeFor("research")).toBe("claude-code");
-    expect(await routeFor("light")).toBe("ollama");
+    expect(await routeFor("light")).toBe("claude-code");
+  });
+
+  it("LLM_LIGHT=ollama 로 명시하면 로컬 사용", async () => {
+    process.env.LLM_LIGHT = "ollama";
+    expect(await (await llm()).routeFor("light")).toBe("ollama");
+  });
+
+  it("LLM_LIGHT=ollama 인데 Ollama 가 꺼져 있으면 구독으로", async () => {
+    process.env.LLM_LIGHT = "ollama";
+    process.env.OLLAMA_URL = "http://127.0.0.1:9";
+    expect(await (await llm()).routeFor("light")).toBe("claude-code");
   });
 
   it("자동: Ollama 에 모델이 없으면 가벼운 작업도 구독으로", async () => {
@@ -164,7 +175,7 @@ describe("작업별 라우팅", () => {
     const { routingSummary } = await llm();
     const rows = await routingSummary();
     expect(rows.find((r) => r.task === "write")?.cost).toContain("구독");
-    expect(rows.find((r) => r.task === "light")?.cost).toContain("무료");
+    expect(rows.find((r) => r.task === "light")?.cost).toContain("구독");
   });
 });
 
@@ -261,6 +272,20 @@ describe("Claude Code 보조 함수", () => {
     expect(classifyClaudeError("segfault").kind).toBe("failed");
   });
 
+  it("stream-json 출력에서 결과와 구독 사용량을 꺼냄 (예전 json 한 덩어리도 받음)", async () => {
+    const { parseClaudeStream } = await import("@/lib/llm/claudeCode");
+    const out = [
+      JSON.stringify({ type: "system", subtype: "init" }),
+      JSON.stringify({ type: "rate_limit_event", rate_limit_info: { unifiedWindows: { five_hour: { utilization: 0.33, resetsAt: 1 }, seven_day: { utilization: 0.42, resetsAt: 2 } } } }),
+      JSON.stringify({ type: "result", is_error: false, result: '{"n":7}', structured_output: { n: 7 } }),
+    ].join("\n");
+    const p = parseClaudeStream(out);
+    expect(p.result?.structured_output).toEqual({ n: 7 });
+    expect(p.usage?.seven_day.utilization).toBe(0.42);
+    expect(parseClaudeStream(JSON.stringify({ result: "x", is_error: false })).result?.result).toBe("x");
+    expect(parseClaudeStream("not json").result).toBeNull();
+  });
+
   it("빈 CLAUDE_CODE_MODEL 은 sonnet 으로", async () => {
     process.env.CLAUDE_CODE_MODEL = "  ";
     const { claudeCodeArgs } = await import("@/lib/llm/claudeCode");
@@ -271,6 +296,7 @@ describe("Claude Code 보조 함수", () => {
 
 describe("Ollama (로컬) 공급자 — 가짜 서버", () => {
   it("Gemma 는 system 을 user 메시지에 합치고, 스키마 format·think 끔·<think> 제거", async () => {
+    process.env.LLM_LIGHT = "ollama"; // 로컬은 명시할 때만
     ollamaReply = `<think>생각 중</think>${JSON.stringify(good)}`;
     const { generateJson } = await llm();
     expect(await generateJson(req("light"))).toEqual(good);

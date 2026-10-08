@@ -20,7 +20,7 @@ export default async function SettingsPage() {
         <h2 className="mb-1 font-semibold">AI 담당 · 비용</h2>
         <p className="mb-3 text-xs text-gray-500">
           작업마다 담당 AI 를 나눠 씁니다. <code>.env</code> 의 LLM_WRITE · LLM_RESEARCH · LLM_LIGHT 로 바꿀 수 있고, 비워 두면 자동으로 정해져요
-          (Claude Code 설치 → 구독 사용, Ollama 실행 중 → 가벼운 작업은 로컬, 둘 다 없으면 수동).
+          (Claude Code 설치 → 모든 작업을 구독으로, 없으면 수동. 로컬 Ollama 는 LLM_LIGHT 등으로 직접 지정할 때만).
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

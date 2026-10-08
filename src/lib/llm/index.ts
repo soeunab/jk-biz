@@ -57,11 +57,14 @@ async function ollamaReady() {
   return ollamaCache.ok;
 }
 
-/** 작업별 담당 공급자 (설정이 없으면 자동 감지: 구독 Claude Code → 로컬 Ollama → API 키 → 수동) */
+/**
+ * 작업별 담당 공급자 (설정이 없으면 자동 감지: 구독 Claude Code → API 키 → 수동).
+ * 가벼운 작업(주제 발굴·카드뉴스·발전 제안)도 Claude 로 — 로컬 모델은 키워드·제목 품질이 떨어져(2026-10 실측) 기본에서 뺐습니다.
+ * 로컬 Ollama 는 LLM_LIGHT="ollama" 처럼 명시했을 때만 씁니다.
+ */
 export async function routeFor(task: RouteTask): Promise<LLMProviderName> {
   const explicit = explicitFor(task);
-  if (explicit) return explicit;
-  if (task === "light" && (await ollamaReady())) return "ollama";
+  if (explicit) return explicit === "ollama" && !(await ollamaReady()) && claudeBin() ? "claude-code" : explicit;
   if (claudeBin()) return "claude-code";
   if (env.anthropicKey) return "anthropic";
   if (env.geminiKey) return "gemini";
@@ -248,7 +251,85 @@ export async function generateImageWithGemini(prompt: string, aspectRatio = "16:
 }
 
 export type Research = { notes: string; sources: { title: string; url: string }[] };
+
+/**
+ * 조사 지침 — 2026-10-07 진단: AI 사실 검수에서 오류가 많았던 원인이 조사 단계였음
+ * (예전 연도 기준 수치(근로장려금 맞벌이 3,800만 → 실제 4,400만), 개인 블로그·집계 사이트가 출처의 절반 이상, 날짜 없는 메모, 모든 주제에 'IT 리서처').
+ * 그래서 주제별 공식 출처 순서·최신성·사실마다 기준일을 강제합니다.
+ */
+export const RESEARCH_SYSTEM = `당신은 블로그 원고용 사실 조사 담당입니다. 결과는 한국어 메모로 씁니다.
+[출처 우선순위 — 위에서부터 찾고, 위 출처로 확인되면 아래 출처는 근거로 쓰지 마세요]
+1) 1차 공식 출처: 정부·공공기관(*.go.kr, 정부24, 복지로, 국세청·홈택스, 법령정보), 공시(DART·거래소·회사 IR), 제품·서비스 공식 사이트(요금 페이지·고객지원·공식 블로그·공식 문서)
+2) 신뢰할 수 있는 언론 보도(공식 발표를 인용한 기사, 날짜 확인)
+3) 그 외(개인 블로그·카페·집계/요약 사이트·AI 생성 사이트·위키류)는 참고만 하고 근거로 쓰지 마세요. 이런 곳에만 있는 수치는 "미확인"으로 표시하세요.
+[최신성]
+- 금액·기준·한도·요금·기한은 해마다 바뀝니다. 오늘 날짜 기준으로 지금 적용되는 연도(귀속연도·시행연도)의 값인지 반드시 확인하고, 지난 연도 기준 값을 최신처럼 쓰지 마세요.
+- 출처마다 값이 다르면 가장 최근의 공식 출처를 따르고, 충돌 사실을 메모에 함께 적으세요.
+[메모 형식]
+- 사실 하나마다 "값 — 적용 기준(연도·기준일) — 출처명(게시·수정일)"을 붙이세요. 날짜를 확인하지 못한 사실은 "(날짜 미확인)"이라고 쓰세요.
+- 확인하지 못한 내용을 추측으로 채우지 마세요.`;
 const ResearchSchema = z.object({ notes: z.string(), sources: z.array(z.object({ title: z.string(), url: z.string() })) });
+
+export const FactCheckSchema = z.object({
+  facts: z
+    .array(
+      z.object({
+        claim: z.string().describe("확인한 사실 (무엇이 얼마인지 한 줄)"),
+        value: z.string().describe("최종 값 — 정정했으면 정정된 값"),
+        status: z.enum(["confirmed", "corrected", "unverified"]).describe("confirmed=공식 출처로 확인, corrected=메모 값이 틀려 공식 값으로 정정, unverified=공식 출처로 확인 못함"),
+        previous: z.string().describe("corrected 일 때 메모에 있던 잘못된 값, 아니면 빈 문자열"),
+        asOf: z.string().describe("적용 기준(연도·기준일) — 모르면 빈 문자열"),
+        url: z.string().describe("확인한 공식 출처 URL — 없으면 빈 문자열"),
+      }),
+    )
+    .describe("메모의 핵심 수치·날짜·기준(금액·소득 기준·한도·요금·기한·지급일·모델/요금제 이름 등) 최대 12개"),
+});
+export type FactCheck = z.infer<typeof FactCheckSchema>;
+
+/**
+ * 핵심 수치 재확인 — 조사 메모의 금액·기준·날짜를 1차 공식 출처 페이지를 직접 열어 대조합니다(원고 쓰기 전 1번).
+ * AI 사실 검수가 나중에 하던 '공식 페이지 대조'를 원고 작성 전으로 당겨, 틀린 수치가 원고 여러 곳에 퍼지는 것을 막습니다.
+ * Claude(구독)·API 키 경로만 — 웹 검색을 못 하는 공급자는 null.
+ */
+export async function verifyKeyFacts(input: { keyword: string; notes: string; today: string; pages?: string }): Promise<FactCheck | null> {
+  if (!input.notes.trim()) return null;
+  const provider = await routeFor("research");
+  if (provider !== "claude-code") return null;
+  const out = await runClaudeCode({
+    system: RESEARCH_SYSTEM,
+    prompt: `오늘은 ${input.today}입니다. "${input.keyword}" 블로그 원고를 쓰기 전에, 아래 조사 메모에서 원고에 들어갈 핵심 수치·날짜·기준을 최대 12개 뽑아
+각각을 1차 공식 출처 페이지(정부·공공기관·공시·제품 공식 요금/고객지원 페이지)를 직접 열어(WebFetch) 대조하세요.
+- 공식 출처와 같으면 confirmed, 다르면 공식 값으로 corrected(previous 에 메모 값), 공식 출처를 못 찾으면 unverified.
+- 공식 페이지가 직접 열리지 않으면(403·차단·로그인 필요) 포기하지 말고 같은 공식 도메인을 검색하세요
+  (예: "site:help.openai.com 요금", "site:nts.go.kr 근로장려금 기준", 공식 도움말·문서·보도자료·공식 블로그).
+  공식 도메인의 검색 결과 요약으로 값이 확인되면 confirmed 로 두고 url 에 그 공식 페이지 주소를 쓰세요.
+- 공식 출처와 2차 자료(블로그·기사 요약)가 다르면 공식 값이 맞습니다 — "충돌"로 남기지 말고 공식 값으로 확정하세요.
+  공식 출처끼리 다를 때만 unverified 로 두고 claim 에 어느 공식 출처가 어떻게 다른지 적으세요.
+- 특히 지난 연도 기준 값이 섞였는지 확인하세요(지금 적용되는 연도의 값인지).
+
+[조사 메모]
+${input.notes}
+${input.pages ?? ""}`,
+    jsonSchema: z.toJSONSchema(FactCheckSchema) as object,
+    tools: ["WebSearch", "WebFetch"],
+  });
+  const parsed = FactCheckSchema.safeParse(out.structured ?? extractJson(out.text));
+  return parsed.success ? parsed.data : null;
+}
+
+/** 재확인 결과 → 원고 작성 AI·사실 검수가 읽을 메모 블록 */
+export function factSheetText(fc: FactCheck): string {
+  const line = (f: FactCheck["facts"][number]) => `${f.claim}: ${f.value}${f.asOf ? ` (기준 ${f.asOf})` : ""}${f.url ? ` — ${f.url}` : ""}`;
+  const ok = fc.facts.filter((f) => f.status === "confirmed");
+  const fixed = fc.facts.filter((f) => f.status === "corrected");
+  const unk = fc.facts.filter((f) => f.status === "unverified");
+  return [
+    "[핵심 수치 재확인 — 공식 출처 대조 결과. 원고의 숫자·날짜·기준은 이 결과를 따르세요]",
+    ...ok.map((f) => `✔ 확인: ${line(f)}`),
+    ...fixed.map((f) => `✎ 정정(메모의 "${f.previous}"는 틀림): ${line(f)}`),
+    ...unk.map((f) => `? 미확인(원고에 단정하지 말고 '공식 확인 필요'로 쓰거나 빼고 reviewChecklist 에): ${line(f)}`),
+  ].join("\n");
+}
 
 /**
  * 최신 정보 조사 (웹 검색). AI 도구는 요금제·기능이 자주 바뀌므로 원고 작성 전에 공식 정보를 확인합니다.
@@ -258,8 +339,7 @@ export async function research(question: string): Promise<Research> {
   const provider = await routeFor("research");
   // 로컬 모델·수동 모드는 웹 검색을 할 수 없음 (수동 모드는 지시문에 웹 검색 안내가 포함됨)
   if (provider === "mock" || provider === "manual" || provider === "ollama") return { notes: "", sources: [] };
-  const system =
-    "당신은 IT 리서처입니다. 공식 문서·공식 블로그·신뢰할 수 있는 언론을 우선 참고해 최신 사실(요금제, 기능, 출시일, 사용 방법, 제한사항)을 한국어 메모로 정리하세요. 날짜와 출처를 함께 적으세요.";
+  const system = RESEARCH_SYSTEM;
   if (provider === "claude-code") {
     const out = await runClaudeCode({
       system,

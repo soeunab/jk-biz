@@ -6,7 +6,8 @@ import { enqueue, enqueueOnce } from "@/lib/jobs/queue";
 import { createCardNews } from "@/lib/cardnews";
 import { getBrand } from "@/lib/brand";
 import { currentSimilarity, readManuscript, researchNotesOf } from "@/lib/content/service";
-import { readinessIssues } from "@/lib/content/readiness";
+import { alignmentFrom, readinessIssues } from "@/lib/content/readiness";
+import { syncRemote } from "@/lib/publishers/remote";
 import {
   canRegenerate,
   editLockedMessage,
@@ -30,7 +31,9 @@ type Action =
   | "unapprove"
   | "reject"
   | "reopen"
-  | "unlinkRemote";
+  | "unlinkRemote"
+  | "syncRemote"
+  | "convertRemote";
 
 /**
  * 원고 워크플로
@@ -63,21 +66,49 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
     case "images":
       if (isEditLocked(post.status)) return fail(editLockedMessage(post.status));
       return ok({ jobId: (await enqueueOnce("post.images", { postId: id })).id });
-    case "publishPrivate":
+    case "publishPrivate": {
       if (!post.accountId) return fail("발행할 계정을 먼저 지정하세요.");
       if (!(PUBLISH_PRIVATE_ALLOWED as readonly string[]).includes(post.status) || !post.html) return fail("원고가 완성된 뒤에 발행할 수 있어요.");
-      // 네이버는 다시 올리면 새 글이 하나 더 생김 — 이미 올라간 글이 있으면 막고 안내
-      if (post.platform === "NAVER" && post.remoteId) return fail(naverAlreadyUploadedMsg(post.remoteId));
+      // 네이버 발행 버튼은 눌렸는데 주소를 확인 못 한 글 — 이미 올라갔을 수 있어 사람이 정리하기 전까지 다시 올리지 않음
+      if (post.remoteId === NAVER_UNCONFIRMED) return fail(NAVER_UNCONFIRMED_MSG);
+      // 이미 블로그에 올라간 글을 다시 올리면: 네이버는 글이 하나 더 생기고, 블로거는 블로그에서 고친 내용을 덮어씀 → 먼저 알리고 확인받음
+      if (post.remoteId && !post.remoteId.startsWith("demo-") && !force) {
+        if (post.platform === "NAVER") {
+          return ok({ needsConfirm: true, issues: ["네이버는 다시 올리면 기존 비공개 글은 그대로 두고 글이 하나 더 생겨요. 고칠 내용이 있으면 네이버 편집 화면에서 직접 고치고 [🔄 블로그에서 가져오기]로 반영하는 걸 권해요. 새 글로 다시 올리려면 기존 비공개 글은 네이버에서 직접 지워 주세요."] });
+        }
+        const diff = await syncRemote(id).catch(() => null);
+        if (diff?.edited) {
+          return ok({
+            needsConfirm: true,
+            issues: [`블로거에서 고친 내용이 있어요 (본문 유사도 ${diff.similarity != null ? Math.round(diff.similarity * 100) + "%" : "–"}, 사진 ${diff.baseImages ?? "?"} → ${diff.images}장${diff.titleChanged ? ", 제목 변경" : ""}). 다시 올리면 블로거에서 고친 내용이 스튜디오 원고로 덮어써져 사라져요.`],
+          });
+        }
+      }
+      // 네이버 새 글로 다시 올리기를 확인받았으면 기존 글과의 연결을 끊고 올림 (발행 함수는 연결된 글이 있으면 멈춤 — 중복 클릭 방지)
+      if (force && post.platform === "NAVER" && post.remoteId && !post.remoteId.startsWith("demo-")) {
+        await db.post.update({ where: { id }, data: { remoteId: null, remoteUrl: null } });
+      }
       return ok({ jobId: (await enqueueOnce("post.publishPrivate", { postId: id })).id });
+    }
+    case "syncRemote":
+      if (!post.remoteId && !post.remoteUrl) return fail("아직 블로그에 올라가지 않은 글이에요.");
+      return ok({ jobId: (await enqueueOnce("post.syncRemote", { postId: id })).id });
+    case "convertRemote":
+      if (!post.remoteId && !post.remoteUrl) return fail("블로그 글 주소가 없어요.");
+      // 블로그 글은 바꾸지 않고 스튜디오 원고만 만듦 — 공개된 글도 가능, 생성 중일 때만 막음
+      if (post.status === "GENERATING") return fail(editLockedMessage(post.status));
+      return ok({ jobId: (await enqueueOnce("post.convertRemote", { postId: id })).id });
     case "approve": {
       if (post.status !== "PRIVATE") return fail("비공개 발행(검수 대기) 상태에서만 승인할 수 있어요.");
       const m = readManuscript(post.content);
       // 저장된 값이 아니라 지금 다시 계산 — 같은 주제를 다른 계정에 만든 글이 나중에 끝났을 수 있음
       const sim = m ? await currentSimilarity(id, post.platform, m) : undefined;
-      const issues = m ? readinessIssues(m, { brand: await getBrand(), similarity: sim, renderedHtml: post.html, researchNotes: researchNotesOf(post.research), republish: (post.seoReport as { republish?: null | { sourceTitle: string; sourceUrl: string | null; similarity: number; warn: boolean } } | null)?.republish ?? null, accountConcept: post.account ? post.account.concept : undefined }) : [];
+      const issues = m ? readinessIssues(m, { brand: await getBrand(), similarity: sim, renderedHtml: post.html, researchNotes: researchNotesOf(post.research), republish: (post.seoReport as { republish?: null | { sourceTitle: string; sourceUrl: string | null; similarity: number; warn: boolean } } | null)?.republish ?? null, accountConcept: post.account ? post.account.concept : undefined, alignment: alignmentFrom(post.aiReview) }) : [];
       // 확인 사유가 있으면 한 번 알려 주고, 검수자가 확인한 뒤(force) 승인
       if (issues.length && !force) return ok({ needsConfirm: true, issues: issues.map((i) => i.message) });
       await db.post.update({ where: { id }, data: { status: "APPROVED", reviewerNote: issues.length ? `${post.reviewerNote}\n[승인 시 확인한 사유] ${issues.map((i) => i.message).join(" / ")}`.trim() : post.reviewerNote } });
+      // 승인 시점의 블로그 본문을 뒤에서 가져와 둠 (비공개 발행 뒤 블로그에서 고친 내용 반영) — 승인을 기다리게 하지 않음
+      if (post.remoteId && !post.remoteId.startsWith("demo-")) await enqueue("post.syncRemote", { postId: id });
       return ok();
     }
     case "reject":
@@ -134,7 +165,3 @@ const UserSourcesInput = z.object({
   mode: z.enum(["prefer", "only"]),
 });
 
-function naverAlreadyUploadedMsg(logNo: string) {
-  if (logNo === NAVER_UNCONFIRMED) return NAVER_UNCONFIRMED_MSG;
-  return `이미 네이버에 올라간 글이 있어요(logNo=${logNo}). 네이버에서 직접 수정하거나, 네이버에서 그 글을 삭제한 뒤 [네이버 연결 해제]를 누르고 다시 올리세요.`;
-}

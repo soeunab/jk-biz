@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { ActionButton } from "@/components/ActionButton";
 import { Empty, PageHeader } from "@/components/ui";
 import { INSIGHT_TYPE } from "@/lib/labels";
+import { ProposalView } from "@/components/ProposalView";
+import { OPTIMIZABLE } from "@/lib/insights/optimize";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +19,7 @@ export default async function InsightsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="발전 제안"
-        desc="유입·수익 데이터를 분석해 제목 개선, 글 보강, 수익화, 다음 주제, 발행 주기, 카드뉴스 확산을 제안합니다. (매일 자동 갱신)"
+        desc="유입·수익 데이터를 분석해 제목 개선, 글 보강, 저성과 글 정리, 광고 배치, 수익화, 다음 주제, 발행 주기, 카드뉴스 확산을 제안합니다. (매일 자동 갱신 · 공개된 글은 자동으로 바꾸지 않아요)"
         actions={<ActionButton url="/api/insights/generate" label="🧭 지금 분석하기" className="btn-primary" />}
       />
       {insights.length === 0 && <Empty>아직 제안이 없어요. [지금 분석하기]를 눌러 보세요.</Empty>}
@@ -44,16 +46,22 @@ export default async function InsightsPage() {
           <ul className="divide-y">
             {actions.map((a) => {
               const t = INSIGHT_TYPE[a.type] ?? { label: a.type, icon: "•" };
-              const seeds = (a.data as { seeds?: string[] } | null)?.seeds;
+              const d = (a.data ?? {}) as { seeds?: string[]; proposal?: unknown; proposalAt?: string };
+              const seeds = d.seeds;
+              const optimizable = (OPTIMIZABLE as readonly string[]).includes(a.type) && a.postId && posts.has(a.postId);
               return (
                 <li key={a.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
                   <div className="min-w-0 flex-1">
                     <div className="text-xs text-gray-500">{t.icon} {t.label}</div>
                     <div className="font-medium">{a.title}</div>
-                    <p className="text-sm text-gray-600">{a.body}</p>
+                    <p className="whitespace-pre-line text-sm text-gray-600">{a.body}</p>
+                    {d.proposal != null && <ProposalView type={a.type} proposal={d.proposal} at={d.proposalAt} />}
                   </div>
                   <div className="flex gap-2">
                     {a.postId && posts.has(a.postId) && <Link className="btn-secondary" href={`/posts/${a.postId}?tab=edit`}>글 열기</Link>}
+                    {optimizable && (
+                      <ActionButton url={`/api/insights/${a.id}`} label={d.proposal != null ? "🤖 제안 다시 만들기" : "🤖 AI 제안 만들기"} className="btn-primary" />
+                    )}
                     {a.type === "CARDNEWS" && a.postId && <ActionButton url={`/api/posts/${a.postId}/action`} body={{ action: "cardnews" }} label="카드뉴스 생성" />}
                     {seeds && <ActionButton url="/api/topics/discover" body={{ seeds: seeds.join(","), limit: 8 }} label="이 검색어로 주제 발굴" redirect="/topics" />}
                     <ActionButton url={`/api/insights/${a.id}`} method="PATCH" body={{ status: "DONE" }} label="완료" className="btn-success" />

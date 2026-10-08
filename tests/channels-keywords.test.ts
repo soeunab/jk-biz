@@ -1,5 +1,5 @@
 /**
- * 실시간 소재 → 검색 키워드 (keywords.ts): AI 해석 → 데이터 측정 → 데이터 선택.
+ * 실시간 소재 → 메인 키워드(씨드) (keywords.ts): AI 해석 → 네이버 검색량·문서수로 확인. 롱테일은 여기서 만들지 않음.
  * 네이버 API 는 실제 응답 모양으로 흉내 냅니다 (2026-10-02~03 실측에서 문제가 된 사례 기반).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,14 +23,14 @@ vi.mock("@/lib/topics/sources", () => ({
   naverTrendMomentum: async () => ({}),
 }));
 
-const llm = vi.hoisted(() => ({ route: "claude-code", stories: [] as unknown[], checks: [] as unknown[] }));
+const llm = vi.hoisted(() => ({ route: "claude-code", stories: [] as unknown[] }));
 vi.mock("@/lib/llm", async (orig) => ({
   ...(await orig<typeof import("@/lib/llm")>()),
   routeFor: async () => llm.route,
-  generateJson: async (req: { name: string }) => (req.name === "channelKeywordCheck" ? { checks: llm.checks } : { stories: llm.stories }),
+  generateJson: async () => ({ stories: llm.stories }),
 }));
 
-import { checkCandidates, chooseKeyword, contextFor, interpretStories, measurePhrases } from "@/lib/topics/channels/keywords";
+import { chooseMain, contextFor, interpretStories, type Story } from "@/lib/topics/channels/keywords";
 import { planTopics } from "@/lib/topics/channels/discover";
 import { buildGroups } from "@/lib/topics/channels/crossref";
 import type { ChannelItem } from "@/lib/topics/channels/types";
@@ -45,55 +45,6 @@ beforeEach(() => {
   net.docCalls.length = 0;
   llm.route = "claude-code";
   llm.stories = [];
-  llm.checks = [];
-});
-
-describe("측정 — 후보는 제안 검색어를 통째로 포함한 확장만", () => {
-  it("'하나은행 해킹' 확장에 '하나은행카드'(다른 주제)는 안 들어옴", async () => {
-    net.ac = { "하나은행 해킹": ["하나은행 해킹 피해 확인", "하나은행카드", "하나은행 해킹 보상"] };
-    net.vol = { 하나은행해킹: 25, 하나은행해킹피해확인: 12, 하나은행카드: 90000 };
-    net.docs = { 하나은행해킹: 3000, 하나은행해킹피해확인: 40 };
-    const c = await measurePhrases(["하나은행 해킹"], { network: true, docs: 6 });
-    expect(c.map((x) => x.keyword).sort()).toEqual(["하나은행 해킹", "하나은행 해킹 보상", "하나은행 해킹 피해 확인"]);
-    expect(c.find((x) => x.keyword === "하나은행 해킹")).toMatchObject({ volume: 25, documentCount: 3000 });
-  });
-
-  it("검색량이 있는 롱테일 상위만 문서수를 잼 (헤드 키워드·검색량 없음은 안 잼)", async () => {
-    net.ac = { 은행: ["은행 금리 비교", "은행 영업시간"] };
-    net.vol = { 은행: 90000, 은행금리비교: 4000, 은행영업시간: 30000 };
-    net.docs = { 은행금리비교: 200000, 은행영업시간: 90000 };
-    await measurePhrases(["은행"], { network: true, docs: 6 });
-    expect(net.docCalls.sort()).toEqual(["은행 금리 비교", "은행 영업시간"]);
-    net.docCalls.length = 0;
-    await measurePhrases(["은행"], { network: true }); // 기본은 검색량만 (문서수는 후보 확인 뒤에)
-    expect(net.docCalls).toEqual([]);
-  });
-
-  it("오프라인이면 제안 검색어만 (네트워크 안 씀)", async () => {
-    const c = await measurePhrases(["코스피 7000 회복"], { network: false });
-    expect(c.map((x) => x.keyword)).toEqual(["코스피 7000 회복"]);
-    expect(net.docCalls).toEqual([]);
-  });
-});
-
-describe("선택 — 데이터가 고르고, 고른 키워드는 항상 문서수까지", () => {
-  it("검색량 확인된 롱테일 중 경쟁·검색량 점수 최고", async () => {
-    net.ac = { "삼성 반도체 성과급": ["삼성 반도체 성과급 지급일"] };
-    net.vol = { 삼성반도체성과급: 2470, 삼성반도체성과급지급일: 300 };
-    net.docs = { 삼성반도체성과급: 400000, 삼성반도체성과급지급일: 50 };
-    const c = await measurePhrases(["삼성 반도체 성과급"], { network: true, docs: 6 });
-    const { pick, reason } = await chooseKeyword(c, ["삼성 반도체 성과급"], true);
-    expect(reason).toBe("longtail");
-    expect(pick.keyword).toBe("삼성 반도체 성과급 지급일"); // 검색량은 작아도 경쟁이 훨씬 덜함
-  });
-
-  it("검색량이 아직 없는 신조어면 헤드가 아닌 첫 제안 검색어 + 문서수 측정 (미확인으로 남지 않게)", async () => {
-    net.docs = { ai침투: 120, ai침투흔적: 8 };
-    const c = await measurePhrases(["AI", "AI 침투 흔적"], { network: true, docs: 6 });
-    const { pick, reason } = await chooseKeyword(c, ["AI", "AI 침투 흔적"], true);
-    expect(reason).toBe("phrase");
-    expect(pick).toMatchObject({ keyword: "AI 침투 흔적", volume: null, documentCount: 8 });
-  });
 });
 
 describe("해석 — 기사 없는 키워드형 소재", () => {
@@ -107,15 +58,15 @@ describe("해석 — 기사 없는 키워드형 소재", () => {
     expect(contextFor(withArticle, pool)).toEqual([]); // 기사가 있으면 그대로
   });
 
-  it("AI 가 무슨 일인지 모른다고 하면 추천 대상에서 빠짐, 아는 소재는 제안 검색어 사용", async () => {
+  it("AI 가 무슨 일인지 모른다고 하면 추천 대상에서 빠짐, 아는 소재는 메인 키워드 + 대안", async () => {
     const [a, b] = buildGroups([trend("배당"), art("코스피 7000선 회복…외국인 순매수")], 1.6, true);
     llm.stories = [
-      { groupId: a.id, hasStory: false, summary: "", phrases: [] },
-      { groupId: b.id, hasStory: true, summary: "코스피 7000선 회복", phrases: ["코스피 7000 회복", " '코스피 전망' "] },
+      { groupId: a.id, hasStory: false, summary: "", mainKeyword: "", phrases: [] },
+      { groupId: b.id, hasStory: true, summary: "코스피 7000선 회복", mainKeyword: " '코스피 7000' ", phrases: ["코스피 7000 회복", "코스피 7000"] },
     ];
     const s = await interpretStories([a, b], new Map(), () => undefined);
     expect(s.get(a.id)!.hasStory).toBe(false);
-    expect(s.get(b.id)).toMatchObject({ hasStory: true, by: "ai", phrases: ["코스피 7000 회복", "코스피 전망"] });
+    expect(s.get(b.id)).toMatchObject({ hasStory: true, by: "ai", main: "코스피 7000", phrases: ["코스피 7000 회복"] }); // 메인과 같은 대안은 뺌
   });
 
   it("수동 모드면 AI 해석 없이 대표어로 (기사·맥락이 있어야 추천)", async () => {
@@ -124,37 +75,58 @@ describe("해석 — 기사 없는 키워드형 소재", () => {
     const s = await interpretStories([a, b], new Map([[a.id, []]]), () => undefined);
     expect(s.get(a.id)).toMatchObject({ hasStory: false, by: "fallback" });
     expect(s.get(b.id)).toMatchObject({ hasStory: true, by: "fallback" });
+    expect(s.get(b.id)!.main.length).toBeGreaterThan(1); // 대표어를 메인 키워드로
   });
 });
 
-describe("확인·같은 사건 — 데이터로 고르기 전에 사건과 어긋나는 후보·중복 사건 제거", () => {
-  it("'코스피 7000 회복' 사건에 '코스피 7000선 붕괴'는 검색량이 커도 고르지 않음", async () => {
-    const [g] = buildGroups([art("코스피 7000선 회복…외국인 순매수")], 1.6, true);
-    llm.stories = [{ groupId: g.id, hasStory: true, summary: "코스피 7000선 회복", phrases: ["코스피 7000"], sameAs: null }];
-    net.ac = { "코스피 7000": ["코스피 7000선 붕괴", "코스피 7000선 회복"] };
-    net.vol = { 코스피7000: 20000, 코스피7000선붕괴: 9395, 코스피7000선회복: 2625 };
-    net.docs = { 코스피7000선붕괴: 4606, 코스피7000선회복: 3000 };
-    llm.checks = [{ groupId: g.id, ok: ["코스피 7000선 회복"] }];
-    const { planned } = await planTopics([g], [], { limit: 1, existingKeywords: new Set(), network: true, log: () => undefined });
-    expect(planned[0].pick.keyword).toBe("코스피 7000선 회복");
-    expect(net.docCalls).not.toContain("코스피 7000선 붕괴"); // 걸러진 후보에 문서수 측정 자리를 쓰지 않음
-    expect(planned[0].candidates.map((c) => c.keyword)).not.toContain("코스피 7000선 붕괴");
+describe("메인 키워드 확정 — 데이터로 확인", () => {
+  const story = (main: string, phrases: string[]): Story => ({ hasStory: true, summary: "x", main, phrases, by: "ai" });
+
+  it("AI 메인 키워드에 검색량이 잡히면 그대로 + 문서수 측정", async () => {
+    net.vol = { 신한은행유출: 10870, 신한은행해킹: 30000 };
+    net.docs = { 신한은행유출: 4200 };
+    const r = await chooseMain(story("신한은행 유출", ["신한은행 해킹"]), true);
+    expect(r).toMatchObject({ measured: true, main: { keyword: "신한은행 유출", volume: 10870, documentCount: 4200 } });
+    expect(r.alternates.map((c) => c.keyword)).toEqual(["신한은행 해킹"]);
   });
 
-  it("앞 소재와 같은 사건은 하나만 남김", async () => {
+  it("메인 키워드에 검색량이 없으면 검색량 잡힌 대안 중 가장 큰 것 — 대상 이름 하나뿐인 헤드('신한은행')는 제외", async () => {
+    net.vol = { 신한은행: 1194200, 신한은행정보유출: 900 };
+    const r = await chooseMain(story("신한은행 고객정보 침해", ["신한은행", "신한은행 정보유출"]), true);
+    expect(r.main.keyword).toBe("신한은행 정보유출");
+    expect(r.measured).toBe(true);
+  });
+
+  it("아무것도 검색량이 없으면(막 터진 이슈) AI 메인 키워드 그대로, measured=false, 문서수는 측정", async () => {
+    net.docs = { 아르곤출시: 12 };
+    const r = await chooseMain(story("아르곤 출시", ["아르곤 사용법"]), true);
+    expect(r).toMatchObject({ measured: false, main: { keyword: "아르곤 출시", volume: null, documentCount: 12 } });
+  });
+
+  it("오프라인이면 네트워크 없이 AI 메인 키워드", async () => {
+    const r = await chooseMain(story("코스피 7000", []), false);
+    expect(r.main.keyword).toBe("코스피 7000");
+    expect(net.docCalls).toEqual([]);
+  });
+});
+
+describe("같은 사건·키워드 중복", () => {
+  it("앞 소재와 같은 사건은 하나만 남기고, 저장 소재는 메인 키워드만", async () => {
     const [a, b] = buildGroups([art("신한은행 고객정보 유출…금융권 비상"), art("금융위 긴급회의 소집, 보안 점검")], 1.6, true);
     llm.stories = [
-      { groupId: a.id, hasStory: true, summary: "신한은행 해킹", phrases: ["신한은행 해킹"], sameAs: null },
-      { groupId: b.id, hasStory: true, summary: "은행 해킹에 금융위 긴급회의", phrases: ["금융위 긴급회의"], sameAs: a.id },
+      { groupId: a.id, hasStory: true, summary: "신한은행 해킹", mainKeyword: "신한은행 유출", phrases: ["신한은행 해킹"], sameAs: null },
+      { groupId: b.id, hasStory: true, summary: "은행 해킹에 금융위 긴급회의", mainKeyword: "금융위 긴급회의", phrases: [], sameAs: a.id },
     ];
     const r = await planTopics([a, b], [], { limit: 2, existingKeywords: new Set(), network: false, log: () => undefined });
-    expect(r.planned.map((p) => p.g.id)).toEqual([a.id]);
+    expect(r.planned.map((p) => [p.g.id, p.main.keyword])).toEqual([[a.id, "신한은행 유출"]]);
     expect(r.sameEvent.map((g) => g.id)).toEqual([b.id]);
   });
 
-  it("AI 확인을 못 쓰면(수동) 거르지 않음", async () => {
-    llm.route = "manual";
-    const c = { keyword: "코스피 전망", sources: [], volume: 100, compIdx: null, adDepth: null, documentCount: null, competitionScore: null, score: 0 };
-    expect((await checkCandidates([{ id: 1, summary: "x", candidates: [c] }], () => undefined)).size).toBe(0);
+  it("이미 저장된 메인 키워드는 건너뜀", async () => {
+    const [a] = buildGroups([art("신한은행 고객정보 유출…금융권 비상")], 1.6, true);
+    llm.stories = [{ groupId: a.id, hasStory: true, summary: "x", mainKeyword: "신한은행 유출", phrases: [], sameAs: null }];
+    const r = await planTopics([a], [], { limit: 2, existingKeywords: new Set(["신한은행유출"]), network: false, log: () => undefined });
+    expect(r.planned).toEqual([]);
+    expect(r.dupKeyword).toBe(1);
   });
 });

@@ -16,9 +16,10 @@ import { db } from "../src/lib/db";
 const POLL_MS = 2000;
 let running = true;
 
-async function loop() {
+/** lane 별 처리 루프 — main(일반 작업)과 background(황금키워드 같은 오래 걸리는 작업)를 따로 돌려 서로 막지 않게 */
+async function loop(lane: "main" | "background" = "main") {
   while (running) {
-    const job = await claimNext().catch((e) => {
+    const job = await claimNext(lane).catch((e) => {
       console.error("큐 조회 실패", e);
       return null;
     });
@@ -66,7 +67,8 @@ async function main() {
   schedule("CRON_ANALYTICS_SYNC", "analytics.sync");
   schedule("CRON_INSIGHTS", "insights.generate");
   schedule("CRON_TOPIC_CLEANUP", "topic.cleanup");
-  await loop();
+  schedule("CRON_GOLDEN_DISCOVERY", "topic.golden");
+  await Promise.all([loop("main"), loop("background")]);
 }
 
 for (const sig of ["SIGINT", "SIGTERM"]) {

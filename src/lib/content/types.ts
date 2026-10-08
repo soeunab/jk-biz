@@ -23,6 +23,10 @@ export const SectionSchema = z.object({
 
 export const ManuscriptSchema = z.object({
   title: z.string(),
+  titleChangeReason: z
+    .string()
+    .optional()
+    .describe("확정 제목을 바꿨을 때만 그 이유(조사 결과와 어긋난 사실). 확정 제목을 그대로 썼거나 확정 제목이 없으면 빈 문자열"),
   metaDescription: z.string().describe("검색결과 설명문 80~150자, 키워드 포함"),
   slug: z.string().describe("영문 소문자-하이픈 permalink"),
   focusKeyword: z.string(),
@@ -51,6 +55,8 @@ export type Manuscript = z.infer<typeof ManuscriptSchema>;
 export type Section = z.infer<typeof SectionSchema>;
 export type ImageSlot = z.infer<typeof ImageSlotSchema>;
 export type Platform = "NAVER" | "BLOGGER";
+/** 글 형식 — SEARCH: 검색 유입용, HOMEFEED: 네이버 홈피드(홈판) 노출용 */
+export type PostFormat = "SEARCH" | "HOMEFEED";
 
 /**
  * 사람이 채워야 하는 경험 자리표시. AI 는 경험을 지어내지 않고 이 형식으로 자리만 남깁니다.

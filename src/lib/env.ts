@@ -4,7 +4,7 @@ function read(name: string): string | undefined {
   return v && v.trim() !== "" ? v.trim() : undefined;
 }
 
-export type CronName = "CRON_TOPIC_DISCOVERY" | "CRON_CHANNEL_DISCOVERY" | "CRON_ANALYTICS_SYNC" | "CRON_INSIGHTS" | "CRON_TOPIC_CLEANUP";
+export type CronName = "CRON_TOPIC_DISCOVERY" | "CRON_CHANNEL_DISCOVERY" | "CRON_ANALYTICS_SYNC" | "CRON_INSIGHTS" | "CRON_TOPIC_CLEANUP" | "CRON_GOLDEN_DISCOVERY";
 
 export const env = {
   get dashboardPassword() { return read("DASHBOARD_PASSWORD"); },

@@ -63,6 +63,26 @@ export const DEFAULT_BRAND: Brand = {
 };
 
 /**
+ * 제휴 프로그램별 대가성 고지 문구 — 글에 실제로 들어간 상품의 프로그램만 모아 글 맨 위(첫 문단)와 링크 옆에 표시합니다.
+ * 두 문구 모두 각 프로그램이 "반드시 기재"하라고 정한 원문 그대로입니다(2026-10-07 사용자 확인). 글자 하나도 바꾸지 마세요.
+ * 네이버 쇼핑 커넥트는 「추천·보증 등에 관한 표시·광고 심사지침」의 기재방법(위치 등)도 지켜야 해서
+ * 본문을 읽기 전에 보이는 맨 위에, 본문과 같은 크기로 넣습니다(render.ts).
+ */
+export const PROGRAM_DISCLOSURE: Record<string, string> = {
+  COUPANG: "이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.",
+  SHOPPING_CONNECT: "이 포스팅은 네이버 쇼핑 커넥트 활동의 일환으로, 판매 발생 시 수수료를 제공받습니다.",
+};
+
+/** 링크 바로 옆에 붙는 짧은 표시 */
+export const PROGRAM_LINK_LABEL: Record<string, string> = { COUPANG: "쿠팡 파트너스 링크", SHOPPING_CONNECT: "쇼핑커넥트 링크" };
+
+export function affiliateDisclosures(programs: string[], fallback: string): string[] {
+  const uniq = [...new Set(programs)];
+  const texts = uniq.map((p) => PROGRAM_DISCLOSURE[p] ?? fallback);
+  return [...new Set(texts)];
+}
+
+/**
  * 계정별로 보이는 이름·저자 정보를 반영한 브랜드 — 여러 블로그를 운영할 때 전역 브랜드명("지원포유")이
  * 다른 계정 원고·이미지·카드뉴스에 그대로 섞여 나가지 않도록 합니다. 문체·금지표현·제휴 고지 문구 등
  * 사업 전체에 공통인 값은 그대로 두고, 이름·저자·AI 고지 문구의 브랜드명만 계정 이름으로 바꿉니다.

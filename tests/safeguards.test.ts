@@ -5,7 +5,7 @@ import { applyPlaceholders, renderBlogger, renderNaverSegments } from "@/lib/con
 import { detectRisk, manuscriptRiskText } from "@/lib/content/risk";
 import { readinessIssues } from "@/lib/content/readiness";
 import { recipeFor } from "@/lib/content/recipes";
-import { applyChange } from "@/lib/content/review";
+import { applyChange, dropOverlappingChanges } from "@/lib/content/review";
 import { buildSystemPrompt, buildUserPrompt } from "@/lib/content/prompts";
 import { DEFAULT_BRAND } from "@/lib/brand";
 
@@ -109,6 +109,20 @@ describe("recipes by search intent", () => {
 });
 
 describe("AI review suggestions", () => {
+  it("keeps only the first of suggestions that rewrite the same sentence", () => {
+    // 실사례: 1차 검수와 추가 조사가 sections.1.body 의 같은 문장을 각각 고쳐, 하나를 적용하자
+    // 나머지가 "원문에서 해당 문구를 찾지 못함"으로 실패 — 사용자에겐 원고에 없는 내용을 검수한 것처럼 보였음
+    const m = mockManuscript({ ...base, platform: "BLOGGER" });
+    m.sections[1].body = "앞 문장이에요. 신청 기한은 자료마다 엇갈려요. 정부24에는 '상반기 예정'이라고만 나와 있어요. 뒤 문장이에요.";
+    const first = { field: "sections.1.body", before: "정부24에는 '상반기 예정'이라고만 나와 있어요.", after: "A" };
+    const second = { field: "sections.1.body", before: "신청 기한은 자료마다 엇갈려요. 정부24에는 '상반기 예정'이라고만 나와 있어요.", after: "B" };
+    const separate = { field: "sections.1.body", before: "뒤 문장이에요.", after: "C" };
+    const otherField = { field: "intro", before: m.intro.slice(0, 5), after: "D" };
+    const { kept, dropped } = dropOverlappingChanges(m, [first, second, separate, otherField]);
+    expect(kept).toEqual([first, separate, otherField]);
+    expect(dropped).toEqual([second]);
+  });
+
   it("applies only exact-match changes at the given path", () => {
     const m = mockManuscript({ ...base, platform: "BLOGGER" });
     const q = m.faq[0].q;

@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
 import { fail, handle, ok } from "@/lib/api";
+import { enqueue } from "@/lib/jobs/queue";
 
-/** 프로그램 없이 직접 작성해 발행한 글을 등록 — AI 원고 없이 분석(조회수·수익) 매칭 대상으로만 추가 */
+/** 프로그램 없이 직접 작성해 발행한 글을 등록 — 본문을 가져와 미리보기·개선 제안·조회수 분석에 쓰고, [원고로 변환]하면 검수·카드뉴스·재발행까지 */
 export const POST = handle(async (req: Request) => {
   const body = (await req.json()) as { accountId?: string; title?: string; remoteUrl?: string; publishedAt?: string };
   const accountId = body.accountId?.trim();
@@ -14,7 +15,9 @@ export const POST = handle(async (req: Request) => {
   const publishedAt = body.publishedAt ? new Date(body.publishedAt) : new Date();
   if (isNaN(publishedAt.getTime())) return fail("발행일 형식이 올바르지 않습니다.");
   const post = await db.post.create({
-    data: { accountId, platform: account.platform, title, remoteUrl, status: "PUBLISHED", publishedAt },
+    data: { accountId, platform: account.platform, title, remoteUrl, status: "PUBLISHED", publishedAt, origin: "imported" },
   });
+  // 등록하면서 블로그에 올라간 본문·제목·발행일을 바로 가져옴 (글은 바꾸지 않음)
+  await enqueue("post.syncRemote", { postId: post.id });
   return ok({ id: post.id });
 });

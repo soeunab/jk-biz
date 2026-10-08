@@ -1,6 +1,7 @@
 import { Marked, type Tokens } from "marked";
-import type { Brand } from "../brand";
+import { affiliateDisclosures, PROGRAM_LINK_LABEL, type Brand } from "../brand";
 import { escapeHtml } from "../util";
+import { adPlan } from "./adPlan";
 import { PLACEHOLDER_RE, stripPlaceholders, type Manuscript } from "./types";
 
 export type RenderImage = { slot: string; src: string; localPath?: string; alt: string; caption?: string; credit?: string; width?: number | null; height?: number | null };
@@ -147,7 +148,18 @@ function jwMd(s: string): string {
 }
 
 function productBox(prod: RenderProduct, sentence: string, anchor: string) {
-  return `<div class="jw-note"><p>${escapeHtml(sentence)}</p><p><a class="jw-ilink" href="${escapeHtml(prod.url)}" target="_blank" rel="sponsored noopener">👉 ${escapeHtml(anchor || prod.name)}${prod.price ? ` (${prod.price.toLocaleString("ko-KR")}원)` : ""}</a></p></div>`;
+  return `<div class="jw-note"><p>${escapeHtml(sentence)}</p><p><a class="jw-ilink" href="${escapeHtml(prod.url)}" target="_blank" rel="sponsored noopener">👉 ${escapeHtml(anchor || prod.name)}${prod.price ? ` (${prod.price.toLocaleString("ko-KR")}원)` : ""}</a> <small>(${escapeHtml(linkLabel(prod))})</small></p></div>`;
+}
+
+/** 링크 옆 표시 — 독자가 광고 링크임을 바로 알 수 있게 */
+function linkLabel(prod: RenderProduct) {
+  return PROGRAM_LINK_LABEL[prod.program] ?? "제휴 링크";
+}
+
+/** 글에 실제로 쓰인 상품의 프로그램별 고지 문구 */
+function usedDisclosures(m: Manuscript, products: Map<string, RenderProduct>, o: RenderOptions) {
+  const programs = m.affiliate.map((a) => products.get(a.productId)?.program).filter((p): p is string => !!p);
+  return programs.length ? affiliateDisclosures(programs, o.brand.disclosure.affiliate) : [];
 }
 
 function adsenseUnit(ad?: RenderOptions["adsense"]) {
@@ -165,17 +177,17 @@ export function renderBlogger(m: Manuscript, o: RenderOptions): string {
   const img = (slot: string) => o.images.find((i) => i.slot === slot);
   const products = new Map((o.products ?? []).map((p) => [p.id, p]));
   const hasAffiliate = m.affiliate.some((a) => products.has(a.productId));
-  const midIndex = Math.floor(m.sections.length / 2);
+  // 광고 위치는 adPlan 규칙(첫 화면 제외·글 길이별 개수·상품 박스와 거리 두기)으로
+  const adAfter = new Set(adPlan(m, m.affiliate.filter((a) => products.has(a.productId)).map((a) => a.afterSection)));
   const out: string[] = [];
 
-  if (hasAffiliate) out.push(`<p class="jw-legend">※ ${escapeHtml(o.brand.disclosure.affiliate)}</p>`);
+  if (hasAffiliate) out.push(`<p class="jw-legend">${usedDisclosures(m, products, o).map((d) => `※ ${escapeHtml(d)}`).join("<br/>")}</p>`);
   out.push(bloggerImage(img("thumbnail")));
   out.push(`<p class="jw-lead">${escapeHtml(m.directAnswer)}</p>`);
   out.push(jwMd(m.intro));
   out.push(`<div class="jw-summary"><p class="jw-title">먼저 결론만</p><ul>${m.tldr.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul></div>`);
   if (o.riskDisclaimers?.length) out.push(`<div class="jw-todo">${o.riskDisclaimers.map((d) => `<p>⚠️ ${escapeHtml(d)}</p>`).join("")}</div>`);
   out.push("<noscript></noscript>"); // 테마 자동 목차 위치
-  out.push(adsenseUnit(o.adsense));
 
   m.sections.forEach((s, i) => {
     const h = s.level === 3 ? 3 : 2;
@@ -188,7 +200,7 @@ export function renderBlogger(m: Manuscript, o: RenderOptions): string {
       const prod = products.get(a.productId);
       if (prod) out.push(productBox(prod, a.sentence, a.anchorText));
     }
-    if (i === midIndex) out.push(adsenseUnit(o.adsense));
+    if (adAfter.has(i)) out.push(adsenseUnit(o.adsense));
   });
 
   if (o.sourceLink && !manuscriptHasSourceToken(m)) out.push(sourceLinkParagraph(o));
@@ -241,7 +253,9 @@ function jsonLd(m: Manuscript, o: RenderOptions, date: string) {
 export type NaverSegment =
   | { type: "html"; html: string }
   | { type: "image"; localPath: string; src: string; caption: string; credit?: string }
-  | { type: "heading"; text: string };
+  | { type: "heading"; text: string }
+  /** 네이버 구분선 컴포넌트(가장 긴 "구분선 2") — 모든 소제목 바로 위에 넣어 섹션을 나눔 */
+  | { type: "divider" };
 
 // 네이버는 폰트 크기·색을 인라인 style 그대로 두지 않고 자체 클래스(se-fs-fsNN)로 바꿔치기하는데,
 // span 에 명시적으로 안 넣으면 빈 값(se-fs-)이 되어 블로그 스킨 기본값에 따라 검정·회색이 뒤섞입니다.
@@ -284,8 +298,13 @@ export function renderNaverSegments(m: Manuscript, o: RenderOptions): NaverSegme
     segs.push({ type: "image", localPath: im.localPath, src: im.src, caption: plain(im.caption ?? im.alt), credit: im.credit });
   };
   // 네이버 스마트에디터의 실제 "소제목" 서식(레벨 2)으로 넣을 제목 — HTML 붙여넣기는 <h2> 를 인식하지 못해 굵은 글씨로만 남기 때문에 따로 처리
-  const pushHeading = (text: string) => {
+  const pushDivider = () => {
     flush();
+    segs.push({ type: "divider" });
+  };
+  // 모든 소제목 바로 위에 가장 긴 구분선 (사용자 지정 양식)
+  const pushHeading = (text: string) => {
+    pushDivider();
     segs.push({ type: "heading", text: plain(text) });
   };
   const simpleMd = (s: string) =>
@@ -301,12 +320,11 @@ export function renderNaverSegments(m: Manuscript, o: RenderOptions): NaverSegme
   /** 캡션·고지문 스타일(13px 회색) */
   const muted = (inner: string) => `<p><span style="${NAVER_MUTED_STYLE}">${inner}</span></p>`;
 
-  if (m.affiliate.some((a) => products.has(a.productId))) {
-    buf.push(muted(`※ ${escapeHtml(o.brand.disclosure.affiliate)}`));
-  }
+  // 대가성 고지는 회색 작은 글씨가 아니라 본문 크기로 — 독자가 놓치지 않게 (공정위 심사지침: 명확하게 표시)
+  for (const d of usedDisclosures(m, products, o)) buf.push(bp(`※ ${escapeHtml(d)}`));
   pushImage("thumbnail");
   buf.push(bp(escapeHtml(m.directAnswer)), `<p><br></p>`);
-  buf.push(bp("📌 핵심 요약"), m.tldr.map((t) => p(`✔ ${escapeHtml(t)}`)).join(""), `<p><br></p>`);
+  buf.push(bp("📌 핵심 요약"), m.tldr.map((t) => p(`✔ ${escapeHtml(t)}`)).join(""));
   if (o.riskDisclaimers?.length) buf.push(o.riskDisclaimers.map((d) => bp(`⚠️ ${escapeHtml(d)}`)).join(""));
   buf.push(simpleMd(m.intro));
 
@@ -321,12 +339,11 @@ export function renderNaverSegments(m: Manuscript, o: RenderOptions): NaverSegme
     if (s.tip) buf.push(p(`💡 <b>꿀팁</b> ${escapeHtml(s.tip)}`));
     for (const a of m.affiliate.filter((a) => a.afterSection === i + 1)) {
       const prod = products.get(a.productId);
-      if (prod) buf.push(p(escapeHtml(a.sentence)), p(`<a href="${escapeHtml(prod.url)}">👉 ${escapeHtml(a.anchorText || prod.name)}</a>`));
+      if (prod) buf.push(p(escapeHtml(a.sentence)), p(`<a href="${escapeHtml(prod.url)}">👉 ${escapeHtml(a.anchorText || prod.name)}</a> (${escapeHtml(linkLabel(prod))})`));
     }
   });
 
   if (o.sourceLink && !manuscriptHasSourceToken(m)) buf.push(naverBodyStyled(sourceLinkParagraph(o)));
-  buf.push(`<p><br></p>`);
   pushHeading("자주 묻는 질문");
   for (const f of m.faq) buf.push(bp(`Q. ${escapeHtml(f.q)}`), p(`A. ${escapeHtml(f.a)}`), `<p><br></p>`);
   buf.push(simpleMd(m.conclusion), bp(escapeHtml(m.cta)));
@@ -345,6 +362,7 @@ export function renderNaverPreview(segs: NaverSegment[]): string {
     .map((s) => {
       if (s.type === "html") return s.html;
       if (s.type === "heading") return `<h2>${escapeHtml(s.text)}</h2>`;
+      if (s.type === "divider") return `<hr style="margin:28px 0;border:0;border-top:1px solid #e5e7eb;" />`;
       return `<figure style="margin:20px 0;text-align:center;"><img src="${escapeHtml(s.src)}" style="max-width:100%;border-radius:8px;" /><figcaption style="font-size:13px;color:#888;">${escapeHtml(s.caption)}</figcaption></figure>`;
     })
     .join("\n");

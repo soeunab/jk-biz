@@ -9,13 +9,27 @@ import { imageSize } from "../images/size";
 import { manuscriptText, renderBlogger, renderNaverPreview, renderNaverSegments, type RenderImage, type RenderOptions } from "./render";
 import { auditManuscript } from "./seo";
 import { similarity, SIMILARITY_WARN } from "./similarity";
-import { ManuscriptSchema, type Manuscript, type Platform } from "./types";
+import { ManuscriptSchema, type Manuscript, type Platform, type PostFormat } from "./types";
 import { normalizeKeyword } from "../topics/scoring";
 import { ensureKeywordInTitle, expandKeyword, relatedOf } from "../topics/longtail";
+import { rankInternalLinks } from "./internalLinks";
 import { detectRisk, manuscriptRiskText } from "./risk";
 import { ManualPendingError } from "../llm/manual";
 import { publicUrlOf, STALE_EDIT_MSG } from "./postStatus";
 import type { StoryContext, UserSources } from "./prompts";
+import {
+  findTimeForms,
+  fixYearOrder,
+  isChosenTitle,
+  lifespanOf,
+  pickSecondaryKeywords,
+  stripTitleNoise,
+  titleChecks,
+  titleRulesText,
+  type TimeForm,
+  type TitlePlan,
+} from "../topics/titleRules";
+import type { AnswerType } from "../topics/scoring";
 
 export type AccountSettings = {
   adsenseClientId?: string;
@@ -119,11 +133,18 @@ export async function generationWarnings(accountIds: string[]) {
  * 주제 하나로 플랫폼·계정별 원고 작업을 만듭니다.
  * 같은 계정에 (정규화 기준) 같은 키워드 원고가 이미 있으면 만들지 않고 건너뜁니다 — 발굴을 여러 번 돌려도 중복 원고가 쌓이지 않게.
  */
-export async function createPostsFromTopic(topicId: string, targets: { platform: Platform; accountId?: string | null }[]) {
+export async function createPostsFromTopic(topicId: string, targets: { platform: Platform; accountId?: string | null }[], naverFormat?: PostFormat) {
   const topic = await db.topic.findUniqueOrThrow({ where: { id: topicId } });
   const norm = topic.normalizedKeyword || normalizeKeyword(topic.keyword);
   const posts = [];
   const skipped: string[] = [];
+  // 제목: 고른 제목은 첫 원고에 확정, 같은 주제의 다른 계정 원고는 서로 다른 보조 검색어로 구별 (독자층 단어 대신)
+  const sig = asObject<{ titleOptions?: { title: string }[]; titleLocked?: boolean; related?: { keyword: string; volume: number | null }[] }>(topic.signals, {});
+  const existing = await db.post.findMany({ where: { topicId }, select: { title: true, titlePlan: true } });
+  let lockFree = isChosenTitle(topic.title, sig) && !existing.some((p) => asObject<Partial<TitlePlan>>(p.titlePlan, {}).locked);
+  const taken = [topic.title, ...existing.map((p) => asObject<Partial<TitlePlan>>(p.titlePlan, {}).secondaryKeyword ?? "")].filter(Boolean);
+  const secondaries = pickSecondaryKeywords(topic.keyword, sig.related ?? [], targets.length, taken);
+  let si = 0;
   for (const t of targets) {
     if (t.accountId) {
       const dup = await findDuplicate(t.accountId, norm);
@@ -132,8 +153,23 @@ export async function createPostsFromTopic(topicId: string, targets: { platform:
         continue;
       }
     }
+    // 홈피드는 네이버에만 있는 노출 지면 — 블로거는 항상 검색형. 지정이 없으면 실시간 트렌드 주제는 홈판형, 검색어 기반은 검색형
+    const format: PostFormat = t.platform === "NAVER" ? (naverFormat ?? (topic.origin === "channels" ? "HOMEFEED" : "SEARCH")) : "SEARCH";
+    const locked = lockFree;
+    lockFree = false;
+    const titlePlan: Partial<TitlePlan> = { locked, secondaryKeyword: locked ? null : (secondaries[si++] ?? null) };
     const post = await db.post.create({
-      data: { topicId, platform: t.platform, accountId: t.accountId ?? null, title: topic.title, focusKeyword: topic.keyword, normalizedKeyword: norm, status: "GENERATING" },
+      data: {
+        topicId,
+        platform: t.platform,
+        format,
+        accountId: t.accountId ?? null,
+        title: topic.title,
+        focusKeyword: topic.keyword,
+        normalizedKeyword: norm,
+        status: "GENERATING",
+        titlePlan: titlePlan as Prisma.InputJsonValue,
+      },
     });
     await enqueue("post.generate", { postId: post.id });
     posts.push(post);
@@ -190,14 +226,16 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
       where: { active: true, platform: { in: [platform, "BOTH"] } },
       take: 30,
     });
-    const internal = post.accountId
+    // 내부링크 후보: 같은 계정의 발행 글 중 같은 주제 묶음(메인 키워드·태그)을 먼저 — 필러 글은 반드시 연결
+    const published = post.accountId
       ? await db.post.findMany({
           where: { accountId: post.accountId, status: "PUBLISHED", remoteUrl: { not: null }, id: { not: postId } },
-          select: { title: true, remoteUrl: true },
+          select: { title: true, remoteUrl: true, focusKeyword: true, tags: true, publishedAt: true, topic: { select: { signals: true } } },
           orderBy: { publishedAt: "desc" },
-          take: 10,
+          take: 60,
         })
       : [];
+    const topicMain = asObject<{ mainKeyword?: string }>(post.topic?.signals, {}).mainKeyword;
     const siblings = await db.post.findMany({
       where: { topicId: post.topicId ?? "__none__", id: { not: postId } },
       select: { title: true },
@@ -206,7 +244,7 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
     const sourceM = source ? readManuscript(source.content) : null;
     const keyword = post.topic?.keyword ?? post.focusKeyword;
 
-    // 함께 검색되는 롱테일 문구 — 발굴 때 저장된 것이 없으면(연관 키워드 확장으로 추가한 주제 등) 지금 조회해 주제에 저장
+    // 함께 검색되는 롱테일 문구 — 발굴 때 저장된 것이 없으면(실시간 메인 키워드 등) 지금 조회해 주제에 저장
     let relatedKeywords = relatedOf(post.topic?.signals);
     if (!relatedKeywords && keyword) {
       const lt = await expandKeyword(keyword, { docs: 0 }).catch(() => null);
@@ -226,21 +264,48 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
       await log(`사용자 자료 ${userSources.notes.trim().length.toLocaleString("ko-KR")}자·URL ${userSources.urls.length}개 반영(방식: ${userSources.mode === "only" ? "내 자료만" : "내 자료 우선"})`);
     }
 
+    // 제목 전략 — 수명(상시/반복/이슈)과 시간 표현 검색량(검색광고, 블로그 검색 API 한도와 별개)으로 날짜를 넣을지 판단
+    const sig = asObject<{ seasonality?: string | null; timeForms?: TimeForm[]; titleOptions?: { title: string }[]; titleLocked?: boolean; answerType?: AnswerType | null }>(post.topic?.signals, {});
+    const prevPlan = asObject<Partial<TitlePlan>>(post.titlePlan, {});
+    const timeForms = sig.timeForms ?? (keyword ? await findTimeForms(keyword).catch(() => []) : []);
+    const lifespan = lifespanOf({ origin: post.topic?.origin, seasonality: sig.seasonality, timeForms });
+    // 예전 원고(titlePlan 없음)는 고른 제목이면 확정으로 봄. 재발행은 원본과 다른 제목이어야 하므로 확정하지 않음
+    const locked = !post.sourcePostId && (prevPlan.locked ?? isChosenTitle(post.topic?.title ?? post.title, sig));
+    const lockedTitle = locked ? (post.topic?.title ?? post.title) : null;
+    const secondaryKeyword = prevPlan.secondaryKeyword ?? null;
+    const titleRules = titleRulesText({ keyword, lifespan, timeForms, secondaryKeyword, today: ymd(new Date()) });
+    await log(
+      `제목: ${locked ? `확정 제목 "${lockedTitle}" 사용` : "원고 AI 가 제목 규칙으로 작성"} · ${lifespan === "issue" ? "이슈형" : lifespan === "recurring" ? "해마다 반복" : "상시형"}${timeForms.length ? ` · 검색되는 시간 표현 ${timeForms.map((f) => f.form).join(", ")}` : ""}${secondaryKeyword ? ` · 보조 검색어 "${secondaryKeyword}"` : ""}`,
+    );
+
     const { manuscript, research } = await generateManuscript(
       {
         platform,
         keyword,
+        mainKeyword: topicMain,
         relatedKeywords: relatedKeywords ?? undefined,
         storyContext,
         userSources: userSources ? { notes: userSources.notes, urls: userSources.urls, mode: userSources.mode } : undefined,
         title: post.topic?.title ?? post.title,
+        titlePlan: { locked, rules: titleRules },
         angle: post.topic?.angle,
         persona: (post.topic?.persona ?? "GENERAL") as Persona,
         tool: post.topic?.tool,
         intent: post.topic?.intent,
+        format: post.format as PostFormat,
         accountName: post.account?.name,
         accountConcept: post.account?.concept,
-        internalLinks: internal.map((p) => ({ title: p.title, url: p.remoteUrl! })),
+        internalLinks: rankInternalLinks(
+          { keyword, mainKeyword: topicMain, terms: relatedKeywords?.map((r) => r.keyword) },
+          published.map((p) => ({
+            title: p.title,
+            url: p.remoteUrl!,
+            focusKeyword: p.focusKeyword,
+            mainKeyword: asObject<{ mainKeyword?: string }>(p.topic?.signals, {}).mainKeyword,
+            tags: Array.isArray(p.tags) ? (p.tags as string[]) : [],
+            publishedAt: p.publishedAt,
+          })),
+        ),
         affiliateProducts: products.map((p) => ({ id: p.id, name: p.name, program: p.program, tags: p.tags })),
         avoidTitles: siblings.map((s) => s.title).filter(Boolean),
         republishOf:
@@ -259,6 +324,16 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
     );
     await ctx?.progress(50, `원고 완성: ${manuscript.title}`);
     // 검증된 롱테일 키워드가 제목 맨 앞·focusKeyword 에 그대로 남도록 (AI 가 바꿔 쓴 경우 되돌림)
+    // 확정 제목: 원고 AI 가 이유 없이 바꿨으면 되돌림 (사실과 어긋나 바꾼 경우만 이유와 함께 남김)
+    const changeReason = manuscript.titleChangeReason?.trim() || null;
+    if (lockedTitle && manuscript.title.trim() !== lockedTitle.trim()) {
+      if (changeReason) await log(`확정 제목을 바꿨습니다 — 이유: ${changeReason}`);
+      else {
+        await log(`원고 AI 가 확정 제목을 이유 없이 바꿔 되돌렸습니다 ("${manuscript.title}" → "${lockedTitle}")`);
+        manuscript.title = lockedTitle;
+      }
+    } else if (!lockedTitle && keyword) manuscript.title = fixYearOrder(stripTitleNoise(manuscript.title, keyword), keyword, timeForms);
+    manuscript.titleChangeReason = lockedTitle && manuscript.title !== lockedTitle ? (changeReason ?? "") : "";
     if (keyword) {
       manuscript.focusKeyword = keyword;
       const fixed = ensureKeywordInTitle(manuscript.title, keyword);
@@ -267,6 +342,20 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
         manuscript.title = fixed;
       }
     }
+    const checks = titleChecks(manuscript.title, { keyword, lifespan, timeForms, answerType: sig.answerType, intent: post.topic?.intent, related: relatedKeywords?.map((r) => r.keyword) });
+    const failed = checks.filter((c) => c.pass === false);
+    if (failed.length) await log(`제목 점검 ✖ ${failed.map((c) => `${c.label}(${c.note})`).join(" · ")}`);
+    const titlePlan: TitlePlan = {
+      lifespan,
+      timeForms,
+      locked,
+      lockedTitle,
+      changeReason: manuscript.titleChangeReason || null,
+      secondaryKeyword,
+      timeInTitle: /(20\d\d|\d+차|\d분기|상반기|하반기)/.test(manuscript.title),
+      failed: failed.map((c) => c.id),
+      decidedAt: new Date().toISOString(),
+    };
 
     await db.post.update({
       where: { id: postId },
@@ -280,6 +369,7 @@ export async function runGeneratePost(postId: string, ctx?: JobContext) {
         normalizedKeyword: post.normalizedKeyword || normalizeKeyword(post.topic?.keyword ?? manuscript.focusKeyword),
         metaDescription: manuscript.metaDescription,
         tags: manuscript.tags,
+        titlePlan: titlePlan as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -366,7 +456,11 @@ export async function rerenderPost(postId: string, opts: { forPublish?: boolean;
 
   const platform = post.platform as Platform;
   const html = platform === "BLOGGER" ? renderBlogger(m, ro) : renderNaverPreview(renderNaverSegments(m, ro));
+  const internalUrls = post.accountId
+    ? (await db.post.findMany({ where: { accountId: post.accountId, status: "PUBLISHED", remoteUrl: { not: null }, id: { not: postId } }, select: { remoteUrl: true }, take: 200 })).map((p) => p.remoteUrl!)
+    : [];
   const report = auditManuscript(m, platform, {
+    internalUrls,
     imageCount: images.length,
     bannedPhrases: brand.bannedPhrases,
     disclosureText: brand.disclosure.affiliate,

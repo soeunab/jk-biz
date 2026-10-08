@@ -33,6 +33,10 @@ const SOURCE_ALIASES: Record<string, string> = {
   쇼핑커넥트: "SHOPPING_CONNECT", shopping_connect: "SHOPPING_CONNECT", 쇼핑: "SHOPPING_CONNECT",
   쿠팡: "COUPANG", 쿠팡파트너스: "COUPANG", coupang: "COUPANG",
   애드센스: "ADSENSE", adsense: "ADSENSE",
+  메이트: "MATE", 네이버메이트: "MATE", mate: "MATE",
+  브랜드커넥트: "BRAND_CONNECT", 협찬: "BRAND_CONNECT", 원고료: "BRAND_CONNECT", brand_connect: "BRAND_CONNECT",
+  체험단: "SPONSOR", sponsor: "SPONSOR",
+  클립: "CLIP", clip: "CLIP",
 };
 
 function parseDate(v: string) {

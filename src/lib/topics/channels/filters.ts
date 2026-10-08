@@ -210,10 +210,3 @@ export function pickCategory(title: string, spec: string): string {
   if (opts.length <= 1) return opts[0] ?? "";
   return classifyWeighted(title, opts).category;
 }
-
-/** 'AI 관련' 소재 묶음 프리셋 — 이 말이 소재 제목에 하나라도 있어야 추천 (실시간 발굴의 focusTerms) */
-export const AI_FOCUS_TERMS = ["AI", "인공지능", "챗GPT", "ChatGPT", "GPT", "클로드", "Claude", "제미나이", "Gemini", "오픈AI", "OpenAI", "앤트로픽", "Anthropic", "LLM", "생성형", "딥시크", "DeepSeek", "코파일럿", "Copilot", "퍼플렉시티", "Perplexity", "그록", "Grok", "미드저니", "챗봇", "하이퍼클로바", "AI 에이전트", "온디바이스"];
-
-export function matchesFocus(text: string, terms: string[]): boolean {
-  return terms.some((t) => t.trim() && hasWord(text, t.trim()));
-}

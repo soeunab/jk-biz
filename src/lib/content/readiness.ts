@@ -7,6 +7,12 @@ import type { Manuscript } from "./types";
 
 export type ReadinessIssue = { id: string; message: string };
 
+/** Post.aiReview 에서 제목-본문 일치 판정만 (검수 전이면 null, 예전 검수라 판정이 없으면 parts 빈 배열) */
+export function alignmentFrom(aiReview: unknown): { mainKeyword?: string; parts: { part: string; onTopic: boolean; note: string }[] } | null {
+  const r = aiReview as { mainKeyword?: string; alignment?: { part: string; onTopic: boolean; note: string }[] } | null;
+  return r ? { mainKeyword: r.mainKeyword, parts: r.alignment ?? [] } : null;
+}
+
 /**
  * 승인 전 확인 사유 — 통과/차단을 대신 결정하지 않고, 사람이 읽고 판단할 수 있는 문장으로 만듭니다.
  * 사유가 있어도 검수자가 확인 후 "그래도 승인"할 수 있습니다.
@@ -24,6 +30,8 @@ export function readinessIssues(
     republish?: { sourceTitle: string; sourceUrl: string | null; similarity: number; warn: boolean } | null;
     /** 계정 콘셉트 (undefined 면 검사 안 함) */
     accountConcept?: string | null;
+    /** AI 검수의 제목-본문 일치 판정 (undefined 면 검사 안 함, null 이면 아직 검수 전) */
+    alignment?: { mainKeyword?: string; parts: { part: string; onTopic: boolean; note: string }[] } | null;
   },
 ): ReadinessIssue[] {
   const issues: ReadinessIssue[] = [];
@@ -72,6 +80,20 @@ export function readinessIssues(
 
   if (m.affiliate.length && !ctx.brand.disclosure.affiliate.trim()) {
     issues.push({ id: "disclosure", message: "제휴 링크가 있는데 대가성 문구가 비어 있어요. [설정 → 브랜드]에서 입력해 주세요." });
+  }
+  if (ctx.alignment === null || (ctx.alignment && !ctx.alignment.parts.length)) {
+    issues.push({ id: "alignment-unchecked", message: "제목-본문 일치를 아직 확인하지 않았어요. [AI 사실 검수]를 실행하면 섹션·FAQ마다 메인 키워드에 대한 내용인지 함께 확인해요." });
+  } else if (ctx.alignment) {
+    const off = ctx.alignment.parts.filter((p) => !p.onTopic);
+    if (off.length) {
+      issues.push({
+        id: "alignment",
+        message: `${ctx.alignment.parts.length}개 중 ${off.length}개 부분이 메인 키워드${ctx.alignment.mainKeyword ? ` “${ctx.alignment.mainKeyword}”` : ""}와 다른 내용이에요 — ${off
+          .slice(0, 3)
+          .map((p) => `${p.part}: ${p.note.replace(/[.。\s]+$/, "")}`)
+          .join(" / ")}. 해당 섹션을 [다시 쓰기]로 고친 뒤 [다시 검수]해 주세요 (네이버는 제목과 본문 덩어리마다 일치도를 봐요).`,
+      });
+    }
   }
   if (ctx.similarity?.warn) {
     issues.push({ id: "similarity", message: `같은 플랫폼의 “${ctx.similarity.with?.title ?? "다른 원고"}”와 ${Math.round(ctx.similarity.max * 100)}% 비슷해요. 관점·예시를 바꿔 주세요.` });

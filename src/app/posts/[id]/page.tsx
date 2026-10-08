@@ -12,12 +12,18 @@ import { Badge, PLATFORM, POST_STATUS } from "@/components/ui";
 import { ApproveButton, RejectButton } from "@/components/ApproveButton";
 import { RepublishButton } from "@/components/RepublishButton";
 import { UserSourcesForm } from "@/components/UserSourcesForm";
+import { AffiliateAdder } from "@/components/AffiliateAdder";
+import { PublishPrivateButton } from "@/components/PublishPrivateButton";
+import { actionableItems } from "@/lib/content/checklist";
 import { AiReviewCard } from "@/components/AiReviewCard";
 import { getBrand } from "@/lib/brand";
-import { readinessIssues } from "@/lib/content/readiness";
+import { alignmentFrom, readinessIssues } from "@/lib/content/readiness";
 import { ManualTaskCard } from "@/components/ManualTaskCard";
 import { pendingManualTasks } from "@/lib/manualTasks";
 import { canMarkPublished, canRegenerate, editLockedMessage, isEditLocked, NAVER_UNCONFIRMED, UNLINK_ALLOWED } from "@/lib/content/postStatus";
+import { TitleChecklist } from "@/components/TitleChecklist";
+import { lifespanOf, titleChecks, type TitlePlan } from "@/lib/topics/titleRules";
+import type { AnswerType } from "@/lib/topics/scoring";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +38,7 @@ type Report = SeoReport & { similarity?: { max: number; with: { id: string; titl
 
 export default async function PostPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
   const { id } = await params;
-  const tab = (await searchParams).tab ?? "preview";
+  const tabParam = (await searchParams).tab;
   const post = await db.post.findUnique({
     where: { id },
     include: {
@@ -61,7 +67,7 @@ export default async function PostPage({ params, searchParams }: { params: Promi
   )
     .map((a) => ({ ...a, partner: partners.includes(a.id) }))
     .sort((a, b) => Number(b.partner) - Number(a.partner));
-  const issues = m && ["DRAFT", "PRIVATE", "APPROVED"].includes(post.status) ? readinessIssues(m, { brand: await getBrand(), similarity: report?.similarity, renderedHtml: post.html, researchNotes: researchNotesOf(post.research), republish: (post.seoReport as { republish?: null | { sourceTitle: string; sourceUrl: string | null; similarity: number; warn: boolean } } | null)?.republish ?? null, accountConcept: post.account ? post.account.concept : undefined }) : [];
+  const issues = m && ["DRAFT", "PRIVATE", "APPROVED"].includes(post.status) ? readinessIssues(m, { brand: await getBrand(), similarity: report?.similarity, renderedHtml: post.html, researchNotes: researchNotesOf(post.research), republish: (post.seoReport as { republish?: null | { sourceTitle: string; sourceUrl: string | null; similarity: number; warn: boolean } } | null)?.republish ?? null, accountConcept: post.account ? post.account.concept : undefined, alignment: alignmentFrom(post.aiReview) }) : [];
   const demo = (post.account?.settings as { demo?: boolean } | null)?.demo;
   // 승인·공개 후에는 원고·이미지를 프로그램에서 바꾸지 않음 (공개 단계가 승인된 내용을 그대로 내보냄)
   const locked = isEditLocked(post.status);
@@ -70,6 +76,32 @@ export default async function PostPage({ params, searchParams }: { params: Promi
     post.platform === "BLOGGER" && post.remoteId && post.status !== "PUBLISHED" && post.account?.externalId
       ? `https://www.blogger.com/blog/post/edit/${post.account.externalId}/${post.remoteId}`
       : null;
+  // 블로그에 올라가 있는 본문(블로그에서 가져오기) — [기존 글 등록] 글이거나 블로그에서 고쳤으면 미리보기 기본을 '블로그 현재본'으로
+  const remoteDiff = (post.remoteDiff ?? null) as { edited?: boolean; similarity?: number | null; chars?: number; images?: number; baseImages?: number | null; title?: string; titleChanged?: boolean } | null;
+  const showRemote = !!post.remoteHtml && (post.origin === "imported" || !!remoteDiff?.edited);
+  const tab = tabParam ?? (showRemote ? "remote" : "preview");
+  const onBlog = !!(post.remoteId || post.remoteUrl) && !post.remoteId?.startsWith("demo-");
+  // 제목 점검 — 지금 제목으로 매번 다시 계산(사람이 제목을 고쳐도 바로 반영). 기존 글 등록 글은 제외
+  const topicSig = (post.topic?.signals ?? {}) as { seasonality?: string | null; answerType?: AnswerType | null; related?: { keyword: string }[] };
+  const titlePlan = (post.titlePlan ?? null) as TitlePlan | null;
+  const titleLifespan = titlePlan?.lifespan ?? lifespanOf({ origin: post.topic?.origin, seasonality: topicSig.seasonality });
+  const titleCheckList =
+    post.origin !== "imported" && post.title && post.focusKeyword
+      ? titleChecks(post.title, {
+          keyword: post.topic?.keyword ?? post.focusKeyword,
+          lifespan: titleLifespan,
+          timeForms: titlePlan?.timeForms,
+          answerType: topicSig.answerType,
+          intent: post.topic?.intent,
+          related: topicSig.related?.map((r) => r.keyword),
+        })
+      : null;
+  const affiliateProducts = await db.affiliateProduct.findMany({
+    where: { active: true, platform: { in: [post.platform, "BOTH"] } },
+    select: { id: true, name: true, program: true },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
 
   return (
     <div className="flex flex-col gap-5">
@@ -78,10 +110,30 @@ export default async function PostPage({ params, searchParams }: { params: Promi
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Badge map={PLATFORM} value={post.platform} />
           <Badge map={POST_STATUS} value={post.status} />
+          {post.format === "HOMEFEED" && <span className="badge bg-orange-50 text-orange-700" title="네이버 홈피드 노출용 — 궁금증 제목·첫 문장 후킹·댓글 유도">🏠 홈판형</span>}
           <span className="text-xs text-gray-500">{post.account?.name ?? "계정 미지정"}{demo ? " (데모: 실제 발행 안 함)" : ""}</span>
           <AutoRefresh active={busy} />
         </div>
         <h1 className="mt-2 text-2xl font-bold">{post.title || post.focusKeyword}</h1>
+        {titleCheckList && (
+          <details className="mt-1" open={titleCheckList.some((c) => c.pass === false) || !!titlePlan?.changeReason}>
+            <summary className="cursor-pointer text-xs text-gray-500">
+              📝 제목 점검 {titleCheckList.filter((c) => c.pass === false).length ? `✖ ${titleCheckList.filter((c) => c.pass === false).length}개` : "✔ 통과"}
+              {titlePlan?.locked && " · 🔒 고른 제목으로 확정"}
+              {titlePlan?.secondaryKeyword && ` · 보조 검색어 "${titlePlan.secondaryKeyword}"`}
+            </summary>
+            <div className="mt-1 rounded-lg border bg-gray-50 p-2">
+              {titlePlan?.changeReason && (
+                <p className="mb-1 text-xs text-amber-700">
+                  ✎ 확정 제목 &quot;{titlePlan.lockedTitle}&quot;을 원고 AI 가 바꿨어요 — 이유: {titlePlan.changeReason}
+                </p>
+              )}
+              <TitleChecklist checks={titleCheckList} lifespan={titleLifespan} timeForms={titlePlan?.timeForms ?? null} />
+              {titleLifespan === "recurring" && <p className="mt-1 text-[11px] text-gray-500">🔁 해마다 반복되는 주제 — 해가 바뀌면 연도를 갱신하라는 제안이 발전 제안에 올라와요.</p>}
+              {titleLifespan === "issue" && <p className="mt-1 text-[11px] text-gray-500">⚡ 이슈형(소모품) — 화제가 식으면 유입이 끝나요. 회차·연도를 뺀 오래 남는 짝 주제를 발전 제안에서 알려 드려요.</p>}
+            </div>
+          </details>
+        )}
         {post.remoteUrl && (
           <a href={post.remoteUrl} target="_blank" className="text-xs text-indigo-600 underline">{post.remoteUrl}</a>
         )}
@@ -123,17 +175,13 @@ export default async function PostPage({ params, searchParams }: { params: Promi
           ))}
         </ol>
         <div className="flex flex-wrap gap-2">
-          {["DRAFT", "FAILED"].includes(post.status) && m && !(post.platform === "NAVER" && post.remoteId) && (
-            <ActionButton url={`/api/posts/${id}/action`} body={{ action: "publishPrivate" }} className="btn-primary"
-              label={post.platform === "BLOGGER" ? "🔒 블로거에 초안(비공개) 저장" : "🔒 네이버에 비공개 발행"} />
+          {["DRAFT", "FAILED"].includes(post.status) && m && post.remoteId !== NAVER_UNCONFIRMED && (
+            <PublishPrivateButton postId={id} className="btn-primary" label={post.platform === "BLOGGER" ? "🔒 블로거에 초안(비공개) 저장" : "🔒 네이버에 비공개 발행"} />
           )}
           {post.status === "PRIVATE" && (
             <>
               <ApproveButton postId={id} />
-              {/* 네이버는 다시 올리면 새 글이 하나 더 생겨서(중복 글) 블로거만 제공 — 네이버는 네이버에서 직접 수정 */}
-              {post.platform === "BLOGGER" && (
-                <ActionButton url={`/api/posts/${id}/action`} body={{ action: "publishPrivate" }} label="🔁 수정본 다시 올리기" />
-              )}
+              <PublishPrivateButton postId={id} label="🔁 수정본 다시 올리기" />
               <RejectButton postId={id} />
             </>
           )}
@@ -165,6 +213,35 @@ export default async function PostPage({ params, searchParams }: { params: Promi
         </div>
       </div>
 
+      {onBlog && (
+        <div className={`card flex flex-wrap items-center justify-between gap-3 text-sm ${remoteDiff?.edited ? "border-amber-300 bg-amber-50/60" : ""}`}>
+          <div>
+            <div className="font-semibold">🌐 블로그에 올라간 글 {post.origin === "imported" && <span className="badge ml-1 bg-gray-100 text-gray-600">기존 글 등록</span>}</div>
+            <div className="text-xs text-gray-600">
+              {post.remoteSyncedAt
+                ? `마지막으로 가져온 시각 ${post.remoteSyncedAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} · 본문 ${(remoteDiff?.chars ?? 0).toLocaleString("ko-KR")}자 · 사진 ${remoteDiff?.images ?? 0}장`
+                : "아직 블로그 본문을 가져오지 않았어요."}
+              {remoteDiff?.edited && (
+                <b className="ml-1 text-amber-700">
+                  · 블로그에서 고친 내용이 있어요 (스튜디오가 올린 것과 유사도 {remoteDiff.similarity != null ? `${Math.round(remoteDiff.similarity * 100)}%` : "–"}, 사진 {remoteDiff.baseImages ?? "?"} → {remoteDiff.images}장{remoteDiff.titleChanged ? `, 제목 "${remoteDiff.title}"` : ""}) — [수정본 다시 올리기]를 누르면 이 수정이 사라져요
+                </b>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <ActionButton url={`/api/posts/${id}/action`} body={{ action: "syncRemote" }} label="🔄 블로그에서 가져오기" />
+            {(post.origin === "imported" || remoteDiff?.edited || !m) && (
+              <ActionButton
+                url={`/api/posts/${id}/action`}
+                body={{ action: "convertRemote" }}
+                label={m ? "📄 블로그 본문으로 원고 다시 만들기" : "📄 원고로 변환"}
+                confirm={m ? "지금 원고를 블로그에 올라간 본문으로 바꿉니다(내용은 그대로, Claude 1번). 스튜디오에서만 바뀌고 블로그 글은 바뀌지 않아요. 계속할까요?" : undefined}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
       {manualTasks.map((t) => <ManualTaskCard key={t.id} {...t} link={undefined} />)}
 
       {issues.length > 0 && (
@@ -179,17 +256,35 @@ export default async function PostPage({ params, searchParams }: { params: Promi
 
       {!m ? (
         <div className="card text-sm text-gray-500">
-          {post.status === "GENERATING" ? "AI가 조사하고 원고를 쓰고 있어요… (1~3분)" : "원고가 없습니다."}
+          {post.status === "GENERATING" ? (
+            "AI가 조사하고 원고를 쓰고 있어요… (1~3분)"
+          ) : post.remoteHtml ? (
+            <>
+              <p className="mb-2">블로그에 올라간 본문이에요. [📄 원고로 변환]을 누르면 AI 사실 검수·SEO 점검·카드뉴스·다른 계정 재발행을 쓸 수 있어요.</p>
+              <RemoteFrame html={post.remoteHtml} />
+            </>
+          ) : (
+            "원고가 없습니다."
+          )}
           <JobLogs jobs={jobs} />
         </div>
       ) : (
         <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
           <div className="card min-w-0">
             <div className="-mx-5 -mt-5 mb-5 flex gap-1 border-b px-3">
-              {[["preview", "미리보기"], ["edit", "원고 편집"], ["images", `이미지 (${post.assets.length})`], ["html", "HTML 코드"]].map(([k, l]) => (
+              {[...(post.remoteHtml ? [["remote", "🌐 블로그 현재본"]] : []), ["preview", "스튜디오 미리보기"], ["edit", "원고 편집"], ["images", `이미지 (${post.assets.length})`], ["html", "HTML 코드"]].map(([k, l]) => (
                 <Link key={k} href={`/posts/${id}?tab=${k}`} className={`px-3 py-3 text-sm ${tab === k ? "border-b-2 border-indigo-600 font-semibold text-indigo-700" : "text-gray-500"}`}>{l}</Link>
               ))}
             </div>
+            {tab === "remote" && post.remoteHtml && (
+              <div>
+                <p className="mb-2 text-xs text-gray-500">
+                  블로그에 실제로 올라가 있는 본문이에요({post.remoteSyncedAt?.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} 기준). 블로그 서식 없이 보여서 모양은 다를 수 있어요.
+                  {post.platform === "NAVER" && " 네이버 사진은 외부에서 열리지 않아 빈칸으로 보일 수 있어요."}
+                </p>
+                <RemoteFrame html={post.remoteHtml} />
+              </div>
+            )}
             {tab === "preview" && (
               <article className="post-preview mx-auto max-w-3xl">
                 <h1 className="mb-4 text-3xl font-extrabold leading-tight">{m.title}</h1>
@@ -223,16 +318,54 @@ export default async function PostPage({ params, searchParams }: { params: Promi
           </div>
 
           <aside className="flex flex-col gap-4">
+            {(() => {
+              const r = (post.research ?? {}) as { facts?: { status: string }[]; selfCheck?: { before: string; after: string; evidence: string }[] };
+              if (!r.facts && !r.selfCheck) return null;
+              const n = (st: string) => (r.facts ?? []).filter((f) => f.status === st).length;
+              return (
+                <details className="card text-xs">
+                  <summary className="cursor-pointer text-sm font-semibold">
+                    🔎 작성 전·후 사실 확인 <span className="font-normal text-gray-500">— 핵심 수치 확인 {n("confirmed")} · 정정 {n("corrected")} · 미확인 {n("unverified")} · 작성 직후 고침 {r.selfCheck?.length ?? 0}</span>
+                  </summary>
+                  {r.selfCheck?.length ? (
+                    <ul className="mt-2 flex flex-col gap-1">
+                      {r.selfCheck.map((c, i) => (
+                        <li key={i} className="rounded bg-gray-50 p-1.5">
+                          <del className="text-red-600">{c.before}</del> → <ins className="text-emerald-700 no-underline">{c.after}</ins>
+                          <div className="text-gray-400">{c.evidence}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2 text-gray-500">작성 직후 점검에서 고친 곳은 없어요.</p>
+                  )}
+                </details>
+              );
+            })()}
             <AiReviewCard
               postId={id}
               locked={locked}
-              review={(post.aiReview ?? null) as Parameters<typeof AiReviewCard>[0]["review"]}
+              review={(() => {
+                const r = (post.aiReview ?? null) as Parameters<typeof AiReviewCard>[0]["review"];
+                if (!r) return r;
+                const lc = (post.aiReview as { linkCheck?: { broken: string[] } } | null)?.linkCheck;
+                // 예전 검수 결과도 '사람이 할 일'만 보이게 (원고에 없는 내용·이미 유보한 내용·링크 확인 등은 뺌)
+                const keepBroken = r.concerns.filter((c) => c.startsWith("깨진 내부 링크"));
+                return { ...r, concerns: [...actionableItems(r.concerns.filter((c) => !c.startsWith("깨진 내부 링크")), { linksOk: !lc?.broken.length, hasScreenshots: !!m?.sections.some((s) => s.image?.source === "screenshot") }), ...keepBroken] };
+              })()}
               atLabel={(post.aiReview as { at?: string } | null)?.at ? new Date((post.aiReview as { at: string }).at).toLocaleString("ko-KR") : undefined}
             />
             <ReviewPanel
               postId={id}
               report={report}
-              checklist={m.reviewChecklist}
+              checklist={[
+                ...actionableItems(m.reviewChecklist, {
+                  linksOk: !((post.aiReview as { linkCheck?: { broken: string[] } } | null)?.linkCheck?.broken.length),
+                  hasScreenshots: m.sections.some((s) => s.image?.source === "screenshot"),
+                }),
+                ...(m.affiliate.length ? ["제휴 링크와 대가성 문구가 맞는지 확인"] : []),
+              ]}
+              tip={post.platform === "NAVER" ? "클립(숏폼)을 30초 안팎으로 만들어 넣으면 검색·홈피드 노출 면적이 넓어져요(선택)." : undefined}
               reviewerNote={post.reviewerNote}
               meta={{ keyword: m.focusKeyword, description: m.metaDescription, slug: m.slug, tags: m.tags, sources: m.sources }}
             />
@@ -246,6 +379,7 @@ export default async function PostPage({ params, searchParams }: { params: Promi
               ) : (
                 post.status !== "GENERATING" && <p className="text-xs text-gray-500">🔒 {editLockedMessage(post.status)}</p>
               )}
+              {!locked && <AffiliateAdder postId={id} products={affiliateProducts} sections={m.sections.map((s) => s.heading)} used={m.affiliate.length} />}
               {post.cardNews.map((c) => (
                 <Link key={c.id} href={`/cardnews/${c.id}`} className="text-xs text-indigo-600">🖼️ 카드뉴스: {c.title}</Link>
               ))}
@@ -271,4 +405,12 @@ function JobLogs({ jobs }: { jobs: { id: string; type: string; status: string; l
       ))}
     </details>
   );
+}
+
+/** 블로그 본문 미리보기 — 블로그의 스크립트·스타일이 대시보드에 섞이지 않게 격리된 iframe 으로 */
+function RemoteFrame({ html: raw }: { html: string }) {
+  // 블로그 스크립트는 미리보기에 필요 없고 격리 iframe 에서 막혀 오류만 남기므로 미리 뺌
+  const html = raw.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/\son[a-z]+="[^"]*"/gi, "");
+  const doc = `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;line-height:1.7;padding:16px;color:#111;max-width:760px;margin:auto}img{max-width:100%;height:auto}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:6px}</style></head><body>${html}</body></html>`;
+  return <iframe title="블로그 현재본" sandbox="allow-popups" srcDoc={doc} className="h-[70vh] w-full rounded-lg border bg-white" />;
 }

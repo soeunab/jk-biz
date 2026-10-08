@@ -29,6 +29,19 @@ const REFERENCE = {
 /** 본문에 의존하는 표현 — 문장만 떼어 인용(AI 답변·스니펫)되면 뜻이 통하지 않음 */
 export const DEPENDENT_RE = /(위에서|앞서|앞에서|아래에서|이 글에서|본문에서|위와 같이|아래와 같이|다음과 같이|상기한|전술한)/;
 
+/** 섹션 첫 문장이 답 대신 예고·뜸들이기로 시작하는 표현 — 결론 먼저(AI 브리핑·스니펫 인용) 원칙 위반 */
+export const LEADIN_RE = /(알아보겠|알아볼게|알아봅시다|알아볼까|살펴보겠|살펴볼게|살펴볼까|살펴봅시다|소개하겠|소개해 드릴|소개할게|정리해 보겠|정리해 볼게|궁금하시죠|궁금하셨|시작해 볼까|시작하겠)/;
+
+/** 결론 먼저가 아닌 섹션 번호(1부터) — 첫 문장이 예고·뜸들이기이거나 본문 의존 표현 */
+export function notAnswerFirst(m: Pick<Manuscript, "sections">): number[] {
+  return m.sections
+    .map((s, i) => {
+      const first = firstSentence(s.body.replace(/^[\s>*#-]+/, "").trim());
+      return first && (LEADIN_RE.test(first) || DEPENDENT_RE.test(first)) ? i + 1 : 0;
+    })
+    .filter(Boolean);
+}
+
 /** 남은 경험 자리표시 수 — 제목·요약·소제목·FAQ 질문·표·CTA 까지 원고 전체(사람용 확인 목록 제외)에서 셉니다 */
 export function countPlaceholders(m: Manuscript): number {
   return (JSON.stringify({ ...m, reviewChecklist: [] }).match(PLACEHOLDER_RE) ?? []).length;
@@ -67,6 +80,8 @@ export function auditManuscript(
     /** 시제 모순 점검용: 기준일(YYYY-MM-DD)과 원고 작성 시 저장한 조사 메모 */
     today?: string;
     researchNotes?: string | null;
+    /** 같은 계정의 발행 글 URL — 있으면 내부링크를 1개 이상 넣었는지 확인 */
+    internalUrls?: string[];
   } = { imageCount: 0 },
 ): SeoReport {
   const ref = REFERENCE[platform];
@@ -97,6 +112,10 @@ export function auditManuscript(
     ["메타 설명", m.metaDescription],
     ...m.faq.map((f, i) => [`FAQ ${i + 1}`, f.a]),
   ].filter(([, t]) => DEPENDENT_RE.test(firstSentence(t)));
+  const lateAnswers = notAnswerFirst(m);
+  const json = JSON.stringify(m);
+  const internalUrls = opts.internalUrls ?? [];
+  const linkedInternal = internalUrls.filter((u) => json.includes(u)).length;
 
   const checks: SeoCheck[] = [
     { id: "title-kw", group: "SEO", label: platform === "NAVER" ? "제목에 핵심 키워드를 그대로 포함" : "제목에 핵심 키워드 포함", weight: 10, pass: titleHasKw, detail: `키워드 "${kw}"` },
@@ -119,6 +138,17 @@ export function auditManuscript(
       pass: dependent.length === 0,
       detail: dependent.length ? `본문 의존 표현: ${dependent.map(([n]) => n).join(", ")}` : "인용돼도 완결",
     },
+    {
+      id: "answer-first",
+      group: "AEO",
+      label: "섹션마다 첫 문장에서 바로 답 (결론 먼저)",
+      weight: 4,
+      pass: lateAnswers.length === 0,
+      detail: lateAnswers.length ? `${lateAnswers.join(", ")}번 섹션이 예고·뜸들이기로 시작` : "모든 섹션이 답부터 시작",
+    },
+    ...(internalUrls.length
+      ? [{ id: "internal-link", group: "SEO" as const, label: "같은 블로그 관련 글로 내부링크", weight: 3, pass: linkedInternal > 0, detail: linkedInternal ? `${linkedInternal}개 연결` : "관련 글이 있는데 연결 안 됨 — 주제 묶음(클러스터) 형성에 필요" }]
+      : []),
     { id: "question-headings", group: "AEO", label: "질문형 소제목 2개 이상", weight: 4, pass: questionHeadings >= 2, detail: `현재 ${questionHeadings}개` },
     { id: "faq", group: "AEO", label: "FAQ 4개 이상", weight: 5, pass: m.faq.length >= 4, detail: `현재 ${m.faq.length}개` },
     { id: "tldr", group: "AEO", label: "핵심 요약 3줄", weight: 3, pass: m.tldr.length >= 3, detail: `현재 ${m.tldr.length}개` },

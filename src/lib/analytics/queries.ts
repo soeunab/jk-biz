@@ -62,6 +62,10 @@ export type PostPerf = {
   seoScore: number;
   hasAffiliate: boolean;
   hasCardNews: boolean;
+  /** GA4 참여 시간 합계(초) — null 이면 수집 전 */
+  engagementSec: number | null;
+  /** 렌더된 본문의 인아티클 광고 수 (블로거) */
+  adUnits: number;
   topQueries: { query: string; clicks: number; impressions: number; position: number }[];
 };
 
@@ -102,6 +106,8 @@ export async function postPerformance(days = 28): Promise<PostPerf[]> {
         seoScore: p.seoScore,
         hasAffiliate: (content.affiliate?.length ?? 0) > 0,
         hasCardNews: p._count.cardNews > 0,
+        engagementSec: p.metrics.some((m) => m.engagementSec != null) ? p.metrics.reduce((a, m) => a + (m.engagementSec ?? 0), 0) : null,
+        adUnits: (p.html.match(/class="adsbygoogle"/g) ?? []).length,
         topQueries: (latestQ?.queries as PostPerf["topQueries"]) ?? [],
       };
     })

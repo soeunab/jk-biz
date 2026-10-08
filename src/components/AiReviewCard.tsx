@@ -5,7 +5,16 @@ import { Spinner } from "./ActionButton";
 import { useSubmit } from "./Forms";
 
 type Change = { field: string; before: string; after: string; reason: string; evidence: string };
-type Review = { at: string; summary: string; changes: Change[]; concerns: string[]; applied: number[]; platform: string };
+type Review = {
+  at: string;
+  summary: string;
+  changes: Change[];
+  concerns: string[];
+  applied: number[];
+  platform: string;
+  mainKeyword?: string;
+  alignment?: { part: string; onTopic: boolean; note: string }[];
+};
 
 /** AI 사실 검수 결과 — 자동 반영하지 않고, 사람이 골라서 적용 */
 /** atLabel 은 서버에서 포맷해 전달 (서버·브라우저의 날짜 포맷 차이로 인한 hydration 오류 방지) */
@@ -24,11 +33,35 @@ export function AiReviewCard({ postId, review, atLabel, locked = false }: { post
           </button>
         )}
       </div>
-      <p className="text-xs text-gray-500">웹 검색으로 사실 오류·오탈자만 찾아 제안해요. 제목·구조·키워드는 보존하고, 적용은 직접 고릅니다.</p>
+      <p className="text-xs text-gray-500">웹 검색으로 사실 오류·오탈자만 찾아 제안하고, 섹션·FAQ마다 메인 키워드에 대한 내용인지(제목-본문 일치)도 확인해요. 제목·구조·키워드는 보존하고, 적용은 직접 고릅니다.</p>
       {run.msg && <p className="mt-1 text-xs text-gray-500">{run.msg}</p>}
       {review && (
         <div className="mt-3 flex flex-col gap-3 text-sm">
           <p className="rounded-lg bg-gray-50 p-2 text-xs">{review.summary}</p>
+          {review.alignment && review.alignment.length > 0 && (
+            <div className="text-xs">
+              {(() => {
+                const off = review.alignment.filter((a) => !a.onTopic);
+                return (
+                  <>
+                    <p className={off.length ? "font-semibold text-red-700" : "text-emerald-700"}>
+                      제목-본문 일치 {review.alignment.length - off.length}/{review.alignment.length}
+                      {review.mainKeyword && <span className="font-normal text-gray-500"> · 메인 키워드 “{review.mainKeyword}” 기준 (섹션·FAQ마다)</span>}
+                    </p>
+                    {off.length > 0 && (
+                      <ul className="list-disc pl-5 text-gray-600">
+                        {off.map((a) => (
+                          <li key={a.part}>
+                            <span className="text-gray-400">{a.part}</span> {a.note}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
           {review.changes.length === 0 && <p className="text-xs text-emerald-700">수정 제안 없음</p>}
           {review.changes.map((c, i) => {
             const done = review.applied.includes(i);

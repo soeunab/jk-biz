@@ -11,21 +11,63 @@ const COMMERCIAL_TERMS = [
   "추천", "비교", "가격", "요금", "요금제", "유료", "구독", "할인", "후기", "리뷰", "순위", "top", "best",
   "구매", "노트북", "태블릿", "키보드", "마이크", "웹캠", "모니터", "앱", "프로그램", "강의", "책", "무료체험",
 ];
-const HOWTO_TERMS = ["사용법", "방법", "하는법", "설정", "가입", "시작", "기초", "입문", "팁", "활용", "프롬프트", "예시"];
-const AI_TERMS = [
-  "ai", "인공지능", "제미나이", "gemini", "클로드", "claude", "챗gpt", "chatgpt", "gpt", "퍼플렉시티", "perplexity",
-  "노트북lm", "notebooklm", "코파일럿", "copilot", "감마", "gamma", "뤼튼", "젠스파크", "genspark", "캔바", "노션ai", "프롬프트", "자동화",
-];
-
 export type KeywordMetrics = {
   keyword: string;
   monthlySearch?: number | null;
   documentCount?: number | null;
   compIdx?: string | null;
   adDepth?: number | null;
+  /** 네이버 검색광고 월평균 광고 클릭수(PC+모바일) — 광고주가 실제로 돈을 쓰는 수요 */
+  monthlyClicks?: number | null;
   momentum?: number | null;
+  /** AI 가 판정한 질문 유형 — AI 브리핑·AI 개요가 대신 답하기 쉬운지(AI 내성) */
+  answerType?: AnswerType | null;
   sources: string[];
 };
+
+/**
+ * 질문 유형 — 플레이북의 'AI 내성' 필터. 정의·요약형은 AI 브리핑이 답하고 끝나 클릭이 남지 않고,
+ * 경험·비교·조건 해석·구매 직전 질의는 AI 가 대신하기 어려워 블로그 클릭이 남습니다.
+ */
+export const ANSWER_TYPES = ["definition", "news", "howto", "local_latest", "condition", "comparison", "experience", "purchase"] as const;
+export type AnswerType = (typeof ANSWER_TYPES)[number];
+
+export const ANSWER_TYPE_LABEL: Record<AnswerType, string> = {
+  definition: "정의·요약형",
+  news: "소식형",
+  howto: "방법형",
+  local_latest: "지역·최신형",
+  condition: "조건 해석형",
+  comparison: "비교·선택형",
+  experience: "경험·후기형",
+  purchase: "구매 직전형",
+};
+
+/** AI 내성 0~100 — 높을수록 AI 요약에 클릭을 덜 빼앗김 (플레이북 3번 필터 기준의 상대 순서) */
+export const AI_RESISTANCE: Record<AnswerType, number> = {
+  definition: 20,
+  news: 40,
+  howto: 45,
+  local_latest: 70,
+  purchase: 75,
+  condition: 80,
+  comparison: 80,
+  experience: 85,
+};
+
+/**
+ * 광고 단가 등급 — 한국어 애드센스 RPM 2차 자료 추정(일반 $1~3, IT $2~5, 금융·보험·재테크 $5~15) 기준의 상대 등급.
+ * 정확한 CPC 가 아니라 "같은 트래픽이면 어느 주제가 더 버는가"의 순서만 반영합니다.
+ */
+const HIGH_VALUE_RE = /(보험|대출|금리|카드|적금|예금|연금|세금|절세|연말정산|종합소득세|부가세|환급|부동산|아파트|청약|전세|월세|투자|주식|etf|코인|재테크|변호사|법률|소송|이혼|상속|증여|병원|치료|수술|임플란트|교정|보험금|지원금|장려금|수당)/;
+const MID_VALUE_RE = /(노트북|태블릿|모니터|키보드|스마트폰|아이폰|갤럭시|가전|에어컨|냉장고|세탁기|소프트웨어|프로그램|구독|요금제|강의|자격증|학원|여행|항공|호텔|숙소|창업|부업|이직|취업)/;
+
+export function valueTier(keyword: string): "high" | "mid" | "base" {
+  const k = keyword.toLowerCase().replace(/\s/g, "");
+  if (HIGH_VALUE_RE.test(k)) return "high";
+  if (MID_VALUE_RE.test(k)) return "mid";
+  return "base";
+}
 
 /**
  * 키워드 검증 수준
@@ -52,7 +94,9 @@ export type Scores = {
   /** 광고경쟁도가 있으면 데이터 기반, 없으면 검색의도 규칙 기반 */
   monetizationScore: number;
   monetizationBasis: "ad-data" | "intent-rule";
-  relevanceScore: number;
+  /** AI 내성 0~100, null = 질문 유형 미판정 */
+  aiResistance: number | null;
+  answerType: AnswerType | null;
   /** 우선순위 정렬용 0~100 (예측 아님) */
   total: number;
   /** 실제 데이터로 확인된 지표 수 (검색량·경쟁·트렌드 중 0~3) */
@@ -72,21 +116,6 @@ export function detectIntent(keyword: string): Intent {
   if (COMMERCIAL_TERMS.some((t) => k.includes(t))) return "commercial";
   if (/(로그인|홈페이지|공식|다운로드|사이트)$/.test(k)) return "navigational";
   return "informational";
-}
-
-/**
- * 이 키워드가 지금 발굴 대상 블로그와 관련 있어 보이는지(0~100). 기본은 브랜드 미션(AI 도구) 기준 가중치이고,
- * 계정 콘셉트·도메인이 따로 있으면(domainNeutral) AI 도구 관련 여부는 묻지 않고 범용 정보성 콘텐츠 여부만 봅니다
- * — AI 도구와 무관한 계정에서 AI_TERMS 가 없다고 관련 없는 키워드로 오판(총점 하향·후보 탈락)하지 않도록.
- */
-export function relevance(keyword: string, domainNeutral = false): number {
-  const k = keyword.toLowerCase().replace(/\s/g, "");
-  let s = 0;
-  if (!domainNeutral && AI_TERMS.some((t) => k.includes(t.replace(/\s/g, "")))) s += 60;
-  if (HOWTO_TERMS.some((t) => k.includes(t))) s += 25;
-  if (/(1인가구|자취|혼자|프리랜서|직장인|회사|업무|보고서|엑셀|메일|회의)/.test(k)) s += 15;
-  if (domainNeutral) s += 20;
-  return clamp(s, 0, 100);
 }
 
 /** 검색량 점수: 월 1천~3만 구간을 가장 높게 (너무 크면 상위 노출이 어렵고, 너무 작으면 유입이 적음) */
@@ -113,19 +142,32 @@ export function competitionScore(docs: number | null | undefined, volume: number
   return clamp(100 - Math.log10(saturation / 0.1 + 1) * 37, 0, 100);
 }
 
+/**
+ * 수익성(0~100) — 광고주 경쟁(compIdx·노출 광고 수) + 실제 광고 클릭 수요(월 광고클릭수) + 주제 단가 등급 + 구매 의도 + 제휴 상품.
+ * 우선순위용 상대 점수이며 수익 예측이 아닙니다.
+ */
 export function monetizationScore(m: KeywordMetrics, affiliateTags: string[] = []): number {
   const k = m.keyword.toLowerCase();
-  let s = 20;
-  if (m.compIdx === "높음") s += 35;
-  else if (m.compIdx === "중간") s += 20;
-  else if (m.compIdx === "낮음") s += 8;
-  if (m.adDepth) s += clamp(m.adDepth, 0, 15);
+  let s = 15;
+  if (m.compIdx === "높음") s += 25;
+  else if (m.compIdx === "중간") s += 15;
+  else if (m.compIdx === "낮음") s += 5;
+  if (m.adDepth) s += clamp(m.adDepth, 0, 10);
+  // 월 광고클릭수: 10회 → 8, 100회 → 16, 1,000회 이상 → 20
+  if (m.monthlyClicks != null && m.monthlyClicks > 0) s += clamp(Math.log10(m.monthlyClicks + 1) * 8, 0, 20);
+  const tier = valueTier(m.keyword);
+  if (tier === "high") s += 20;
+  else if (tier === "mid") s += 10;
   const intent = detectIntent(m.keyword);
-  if (intent === "commercial") s += 20;
-  if (intent === "transactional") s += 25;
-  if (/(업무|보고서|엑셀|프리랜서|세금|부업|수익|재테크|이직)/.test(k)) s += 10; // 고단가 광고주 카테고리
+  if (intent === "commercial") s += 15;
+  if (intent === "transactional") s += 20;
   if (affiliateTags.some((t) => t && k.includes(t.toLowerCase()))) s += 10;
   return clamp(s, 0, 100);
+}
+
+/** AI 내성 점수 — 질문 유형을 모르면 null (지어내지 않음) */
+export function aiResistanceScore(t: AnswerType | null | undefined): number | null {
+  return t ? AI_RESISTANCE[t] : null;
 }
 
 export function trendScore(momentum: number | null | undefined): number | null {
@@ -147,12 +189,17 @@ function weighted(parts: [number | null, number][]): number {
   return w ? known.reduce((a, [v, wt]) => a + v * wt, 0) / w : 0;
 }
 
-export function scoreKeyword(m: KeywordMetrics, affiliateTags: string[] = [], domainNeutral = false): Scores {
+/**
+ * 우선순위 점수 — 검색량·경쟁(문서수÷검색량)·수익성·트렌드를 플랫폼별 가중치로 합친 뒤 AI 내성 배율만 곱합니다.
+ * (예전에는 'AI 도구 관련어' 관련성 배율이 있었지만 계정 주제가 다양해져 2026-09-29 꺼졌고, 모든 키워드에 일률적으로
+ *  ×0.52 가 곱해져 점수만 낮아 보이던 것을 2026-10-07 제거 — 순서는 같고 0~100 범위로 보임)
+ */
+export function scoreKeyword(m: KeywordMetrics, affiliateTags: string[] = []): Scores {
   const vs = volumeScore(m.monthlySearch);
   const cs = competitionScore(m.documentCount, m.monthlySearch);
   const ms = monetizationScore(m, affiliateTags);
   const ts = trendScore(m.momentum);
-  const rs = relevance(m.keyword, domainNeutral);
+  const ai = aiResistanceScore(m.answerType);
   const intent = detectIntent(m.keyword);
   const confidence = [vs, cs, ts].filter((x) => x != null).length;
 
@@ -160,8 +207,9 @@ export function scoreKeyword(m: KeywordMetrics, affiliateTags: string[] = [], do
   const naver = weighted([[vs, 0.3], [cs, 0.3], [ms, 0.2], [ts, 0.2]]);
   const google = weighted([[vs, 0.25], [cs, 0.15], [ms, 0.4], [ts, 0.2]]);
   const base = Math.max(naver, google);
-  // 브랜드 주제와 관련 없는 키워드는 크게 감점
-  const total = Math.round(base * (0.4 + (rs / 100) * 0.6));
+  // AI 내성: 판정됐으면 0.8(정의형 20점 → 0.88)~1.2(경험형 85점 → 1.14)배, 모르면 그대로
+  const aiFactor = ai == null ? 1 : 0.8 + (ai / 100) * 0.4;
+  const total = Math.round(clamp(base * aiFactor, 0, 100));
   // 확인된 지표가 없으면 플랫폼을 가를 근거도 없음
   const targetPlatform = confidence === 0 || Math.abs(naver - google) < 5 ? "BOTH" : naver > google ? "NAVER" : "BLOGGER";
   const r = (x: number | null) => (x == null ? null : Math.round(x));
@@ -172,7 +220,8 @@ export function scoreKeyword(m: KeywordMetrics, affiliateTags: string[] = [], do
     trendScore: r(ts),
     monetizationScore: Math.round(ms),
     monetizationBasis: m.compIdx ? "ad-data" : "intent-rule",
-    relevanceScore: rs,
+    aiResistance: ai,
+    answerType: m.answerType ?? null,
     total,
     confidence,
     verification: verificationOf(m),

@@ -1,13 +1,24 @@
 import { getBrand, accountBrand, PERSONAS, type Persona } from "../brand";
-import { generateJson, research } from "../llm";
+import { factSheetText, generateJson, research, verifyKeyFacts, type FactCheck } from "../llm";
 import { josa, ymd } from "../util";
 import { buildSystemPrompt, buildUserPrompt, type BriefInput } from "./prompts";
 import { ManuscriptSchema, type Manuscript, type Platform } from "./types";
+import { officialPagesBlock, readOfficialPages, type OfficialPage } from "./officialPages";
 
 export async function generateManuscript(
   brief: Omit<BriefInput, "today" | "researchNotes" | "researchSources">,
   opts: { log?: (m: string) => Promise<unknown> | void; skipResearch?: boolean } = {},
-): Promise<{ manuscript: Manuscript; research: { notes: string; sources: { title: string; url: string }[]; at: string } }> {
+): Promise<{
+  manuscript: Manuscript;
+  research: {
+    notes: string;
+    sources: { title: string; url: string }[];
+    at: string;
+    facts?: FactCheck["facts"];
+    selfCheck?: { field: string; before: string; after: string; evidence: string }[];
+    pages?: OfficialPage[];
+  };
+}> {
   // 원고 안에서 "브랜드명"으로 자신을 언급하는 부분(수석 에디터 소속·저자 소개·GEO 엔티티 언급)은
   // 이 원고가 속한 계정 이름을 써야 함 — 여러 블로그를 운영할 때 다른 계정 원고에 전역 브랜드명이 섞여 나가면 안 됨
   const brand = accountBrand(await getBrand(), brief.accountName ? { name: brief.accountName, concept: brief.accountConcept ?? "" } : null);
@@ -18,6 +29,8 @@ export async function generateManuscript(
   const user = brief.userSources;
   // "내 자료만 사용" 이면 웹 조사를 하지 않음
   const skipResearch = opts.skipResearch || user?.mode === "only";
+  let facts: FactCheck["facts"] | undefined;
+  let pages: OfficialPage[] = [];
   if (!skipResearch) {
     try {
       await opts.log?.("최신 정보 조사 중 (웹 검색)…");
@@ -28,6 +41,30 @@ export async function generateManuscript(
       if (r.sources.length) await opts.log?.(`출처 ${r.sources.length}개 확보`);
     } catch (e) {
       await opts.log?.(`조사 단계 건너뜀: ${(e as Error).message}`);
+    }
+    // 핵심 수치 재확인 — 금액·기준·날짜를 공식 페이지와 대조해 틀린(지난 연도) 값이 원고에 퍼지지 않게
+    if (researchNotes.trim()) {
+      // 공식 페이지는 Claude 의 웹 읽기가 403 으로 막히는 경우가 많아 스튜디오 브라우저로 먼저 읽어 원문을 넘김
+      pages = await readOfficialPages(researchSources.map((s) => s.url)).catch(() => []);
+      if (pages.length) await opts.log?.(`공식 페이지 ${pages.length}개 원문을 브라우저로 직접 읽음`);
+      try {
+        await opts.log?.("핵심 수치를 공식 출처와 대조 중…");
+        const fc = await verifyKeyFacts({ keyword: brief.keyword, notes: researchNotes, today, pages: officialPagesBlock(pages) });
+        if (fc?.facts.length) {
+          facts = fc.facts;
+          researchNotes = `${factSheetText(fc)}\n\n[조사 메모]\n${researchNotes}`;
+          // 공식 출처로 확인한 URL 을 출처 맨 앞에 (중복 제외)
+          const official = fc.facts.filter((f) => f.url && f.status !== "unverified").map((f) => ({ title: f.claim.slice(0, 60), url: f.url }));
+          researchSources = [...official.filter((o, i, a) => a.findIndex((x) => x.url === o.url) === i), ...researchSources.filter((s) => !official.some((o) => o.url === s.url))].slice(0, 10);
+          // 대조에서 새로 찾은 공식 주소도 원문을 읽어 둠 (작성 직후 점검·사실 검수에서 씀)
+          const more = await readOfficialPages(official.map((o) => o.url).filter((u) => !pages.some((p) => p.url === u)), { max: 4 }).catch(() => []);
+          pages = [...pages, ...more];
+          const n = (st: string) => fc.facts.filter((f) => f.status === st).length;
+          await opts.log?.(`핵심 수치 ${fc.facts.length}개 대조 — 확인 ${n("confirmed")} · 정정 ${n("corrected")} · 미확인 ${n("unverified")}`);
+        }
+      } catch (e) {
+        await opts.log?.(`핵심 수치 재확인 건너뜀: ${(e as Error).message.split("\n")[0]}`);
+      }
     }
   }
 
@@ -44,6 +81,21 @@ export async function generateManuscript(
     mock: () => mockManuscript({ ...brief, today }),
   });
 
+  // 작성 직후 자체 사실 점검 — 원고의 사실 진술·유보 표현을 공식 출처와 한 번 더 대조해 사람에게 넘기기 전에 고침
+  let selfCheck: { field: string; before: string; after: string; evidence: string }[] | undefined;
+  if (researchNotes.trim() && !skipResearch) {
+    try {
+      await opts.log?.("원고의 사실 진술을 공식 출처와 대조 중…");
+      const { selfCheckManuscript } = await import("./selfcheck");
+      const r = await selfCheckManuscript(manuscript, { keyword: brief.keyword, notes: researchNotes, today, pages: officialPagesBlock(pages), log: opts.log });
+      selfCheck = r.applied;
+      await opts.log?.(`자체 사실 점검: ${r.applied.length}곳 고침${r.skipped ? ` · ${r.skipped}곳은 원문 인용이 달라 건너뜀(사람 검수 때 다시 확인)` : ""}`);
+      for (const c of r.applied.slice(0, 5)) await opts.log?.(`  · ${c.before.slice(0, 40)} → ${c.after.slice(0, 40)}`);
+    } catch (e) {
+      await opts.log?.(`자체 사실 점검 건너뜀: ${(e as Error).message.split("\n")[0]}`);
+    }
+  }
+
   // 조사 출처가 원고에 빠졌으면 보강 (GEO: 출처 명시)
   if (manuscript.sources.length === 0 && researchSources.length) manuscript.sources = researchSources.slice(0, 5);
   // 사용자가 준 참고 URL 은 출처에 포함 (중복 제거)
@@ -59,14 +111,14 @@ export async function generateManuscript(
   const allowed = new Set((brief.affiliateProducts ?? []).map((p) => p.id));
   manuscript.affiliate = manuscript.affiliate.filter((a) => allowed.has(a.productId)).slice(0, 2);
   if (brief.platform === "NAVER") manuscript.tags = manuscript.tags.map((t) => t.replace(/[#\s]/g, "")).slice(0, 10);
-  return { manuscript, research: { notes: researchNotes, sources: researchSources, at: today } };
+  return { manuscript, research: { notes: researchNotes, sources: researchSources, at: today, ...(facts ? { facts } : {}), ...(selfCheck ? { selfCheck } : {}), ...(pages.length ? { pages } : {}) } };
 }
 
 /** 조사 질문 — 실시간 소재는 그 사건으로, 사용자 자료가 있으면 그 자료의 확인·최신화로 범위를 좁힘 */
-export function researchQuestionFor(brief: Pick<BriefInput, "keyword" | "tool" | "persona" | "storyContext" | "userSources">, today: string): string {
+export function researchQuestionFor(brief: Pick<BriefInput, "keyword" | "mainKeyword" | "tool" | "persona" | "storyContext" | "userSources">, today: string): string {
   const base = brief.tool
-    ? `"${brief.keyword}" 블로그 글을 쓰려고 합니다. ${brief.tool}의 ${today} 기준 최신 요금제, 주요 기능, 사용 방법, 한국어 지원, 제한사항, ${PERSONAS[brief.persona].label} 활용 사례를 조사해 주세요.`
-    : `"${brief.keyword}" 블로그 글을 쓰려고 합니다. ${today} 기준 이 주제의 최신 사실(금액·조건·기한·절차 등 공식 정보)과 ${PERSONAS[brief.persona].label}에게 실질적으로 도움이 되는 내용을 조사해 주세요.`;
+    ? `"${brief.keyword}" 블로그 글을 쓰려고 합니다. ${brief.tool}의 ${today} 기준 최신 요금제, 주요 기능, 사용 방법, 한국어 지원, 제한사항, 실제 활용 사례를 조사해 주세요.`
+    : `"${brief.keyword}"${brief.mainKeyword && brief.mainKeyword !== brief.keyword ? `("${brief.mainKeyword}"의 구체적인 측면)` : ""} 블로그 글을 쓰려고 합니다. ${today} 기준 이 주제의 최신 사실(금액·조건·기한·절차 등 공식 정보)과 이 키워드를 검색한 사람에게 실질적으로 도움이 되는 내용을 조사해 주세요.`;
   const parts = [base];
   const summary = brief.storyContext?.summary.trim();
   if (summary) parts.push(`다음 사건에 대한 사실만 조사하고, 이름이 비슷한 다른 회사·사건은 섞지 마세요: ${summary}`);

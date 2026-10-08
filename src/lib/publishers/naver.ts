@@ -6,7 +6,7 @@ import { db } from "../db";
 import { env } from "../env";
 import { launchOptions } from "../browser";
 import { accountSettings, rerenderPost } from "../content/service";
-import { renderNaverSegments } from "../content/render";
+import { renderNaverSegments, type NaverSegment } from "../content/render";
 import { stripPlaceholders } from "../content/types";
 import { NAVER_UNCONFIRMED, NAVER_UNCONFIRMED_MSG } from "../content/postStatus";
 import type { PublishResult } from "./types";
@@ -30,6 +30,12 @@ export const SELECTORS = {
   formatDropdown: ["button.se-text-format-toolbar-button"],
   formatSectionTitle: ["button.se-toolbar-option-text-format-sectionTitle-button", "button[class*='format-sectionTitle']"],
   formatBody: ["button.se-toolbar-option-text-format-text-button", "button[class*='format-text-button']"],
+  /** 구분선 기본 삽입 버튼(구분선 1 = 220px 짧은 선) — 긴 선 선택이 안 될 때만 쓰는 예비. 누르면 커서가 구분선 다음 새 본문 문단으로 넘어감.
+   *  인용구 버튼은 스타일 선택 창이 뜨고 커서가 인용구 밖으로 안정적으로 빠져나오지 않아 자동화에 쓰지 않음 (2026-10-07 실제 에디터 확인) */
+  divider: ["button.se-insert-horizontal-line-default-toolbar-button", "button[data-name='horizontal-line']"],
+  /** 구분선 모양 선택 화살표 → "구분선 2"(line1) = 본문 폭 전체(693px)로 가장 긴 선 (구분선 1~8 실측, 2026-10-07) */
+  dividerStyle: ["button.se-document-toolbar-select-option-button[data-name='horizontal-line']"],
+  dividerLong: ["button.se-toolbar-option-insert-horizontal-line-line1-button", "button[class*='horizontal-line-line1']"],
   /** 글자 크기 드롭다운 — 프리셋(11/13/15/16/19/24/28/34/38)만 있고 임의 숫자는 못 씀 */
   fontSizeDropdown: ["button.se-font-size-code-toolbar-button"],
   fontSize24: ["button.se-toolbar-option-font-size-code-fs24-button", "button[class*='font-size-code-fs24']"],
@@ -124,6 +130,87 @@ async function debugShot(page: Page, label: string) {
   return file;
 }
 
+/** 본문 세그먼트(문단·소제목·구분선·사진)를 스마트에디터에 순서대로 입력 — 발행·임시저장 전 단계 (점검 스크립트도 이 함수를 그대로 씀) */
+export async function writeSegments(page: Page, frame: Frame, segments: NaverSegment[], log: (m: string) => unknown) {
+  for (const [i, seg] of segments.entries()) {
+    if (seg.type === "heading") {
+      // HTML <h2> 붙여넣기는 에디터가 굵은 글씨로만 남기고 실제 "소제목" 컴포넌트로 인식 못 함 —
+      // (먼저 글자를 넣고 나중에 "소제목"으로 바꾸면 안의 글자가 통째로 사라지는 버그가 있어서)
+      // 지금 있는 빈 문단을 먼저 "소제목" 서식으로 바꾼 뒤 그 안에 글자를 입력합니다.
+      await setParagraphFormat(frame, page, SELECTORS.formatSectionTitle);
+      await page.keyboard.type(seg.text, { delay: 10 });
+      // 글자 크기가 프리셋 기본값이라 본문과 통일된 24 로 다시 지정 (방금 입력한 글자를 선택)
+      await page.keyboard.press("Shift+Home");
+      await (await first(frame, SELECTORS.fontSizeDropdown)).click();
+      await page.waitForTimeout(300);
+      await (await first(frame, SELECTORS.fontSize24)).click();
+      // 글자 크기 적용 직후 바로 Enter 를 누르면 에디터 내부 상태 동기화(디바운스)가 끝나기 전이라
+      // 방금 입력한 글자가 통째로 사라지는 경쟁 상태 버그가 있어서(실측: 200ms 는 실패, 1200ms 는 성공)
+      // 넉넉히 기다린 뒤에 문단을 넘깁니다.
+      await page.waitForTimeout(1200);
+      await page.keyboard.press("End");
+      await page.keyboard.press("Enter");
+      // 다음 문단이 소제목 서식을 이어받지 않도록 본문으로 되돌림
+      await setParagraphFormat(frame, page, SELECTORS.formatBody);
+    } else if (seg.type === "html") {
+      await pasteHtml(page, seg.html);
+    } else if (seg.type === "divider") {
+      // 붙여넣은 문단 끝에서 새 줄을 만든 뒤 삽입 — 문장 중간에 끼어들지 않게
+      await page.keyboard.press("End");
+      await page.keyboard.press("Enter");
+      // 가장 긴 구분선(구분선 2) — 모양 선택이 안 되면 기본 구분선이라도 넣음
+      let long = false;
+      if (await tryClick(frame, SELECTORS.dividerStyle)) {
+        await page.waitForTimeout(300);
+        long = await tryClick(frame, SELECTORS.dividerLong);
+        if (!long) await page.keyboard.press("Escape"); // 모양 목록을 닫고 기본 구분선으로
+      }
+      if (!long) {
+        await log("⚠️ 긴 구분선(구분선 2)을 찾지 못해 기본 구분선을 넣었어요 — npm run naver:check 로 선택자를 점검하세요");
+        await (await first(frame, SELECTORS.divider)).click();
+      }
+      await page.waitForTimeout(800);
+    } else {
+      const before = await frame.locator(SELECTORS.uploadedImage[0]).count();
+      const chooser = page.waitForEvent("filechooser", { timeout: 10_000 });
+      await (await first(frame, SELECTORS.imageButton)).click();
+      await (await chooser).setFiles(seg.localPath);
+      await frame.waitForFunction(
+        ([sel, n]) => document.querySelectorAll(sel as string).length > (n as number),
+        [SELECTORS.uploadedImage[0], before] as const,
+        { timeout: 30_000 },
+      );
+      await page.waitForTimeout(800);
+      // 문서에 이미지가 여러 장이면 AI 활용 설정·사진 설명 칸도 장마다 하나씩 존재합니다.
+      // 페이지 전체에서 첫 번째 것만 찾으면 항상 첫 사진 것을 건드리게 되므로, 방금 올린(마지막) 이미지 범위 안에서만 찾습니다.
+      const lastImage = frame.locator(SELECTORS.uploadedImage[0]).last();
+      // 사진을 선택해야(속성 툴바가 뜬 상태에서만) AI 활용 설정 버튼과 사진 설명 칸이 나타남
+      await lastImage.locator(".se-image-resource").click({ timeout: 3000 }).catch(() => undefined);
+      await page.waitForTimeout(300);
+      if (seg.credit === "AI 생성 이미지") {
+        await tryClick(frame, SELECTORS.sidebarClose); // 라이브러리 패널이 열려 있으면 버튼을 가려서 먼저 닫음
+        await lastImage.locator(SELECTORS.aiMarkToggle[0]).click({ timeout: 2000 }).catch(() => undefined);
+        await page.waitForTimeout(200);
+      }
+      // 사진 설명(대체 텍스트) — 본문에 따로 문단을 만들지 않고 네이버 자체의 "사진 설명" 칸에 직접 입력
+      if (seg.caption?.trim()) {
+        await lastImage.locator(SELECTORS.imageCaption[0]).click({ timeout: 3000 }).catch(() => undefined);
+        await page.keyboard.type(seg.caption.trim(), { delay: 10 });
+      }
+      // 이미지(+설명 칸) 아래 새 문단으로 커서 이동 — "사진 설명" 칸은 이미지 컴포넌트 안에 격리된 별도
+      // 편집영역이라 ArrowDown 으로는 못 빠져나오고(다음 내용이 캡션 안에 그대로 이어 붙는 버그가 있었음),
+      // 네이버가 이미지 삽입 시 자동으로 만들어 두는 바로 다음 본문 문단을 직접 클릭해서 포커스를 옮깁니다.
+      const nextPara = lastImage.locator("xpath=following-sibling::*[contains(@class,'se-text')][1]");
+      if (await nextPara.count()) {
+        await nextPara.click({ timeout: 2000 }).catch(() => undefined);
+      } else {
+        await page.keyboard.press("ArrowDown").catch(() => undefined);
+      }
+    }
+    if (i % 3 === 0) await log(`본문 입력 중… (${i + 1}/${segments.length})`);
+  }
+}
+
 /** 원고를 네이버 블로그에 비공개 발행(또는 임시저장) */
 export async function naverPublishPrivate(postId: string, log: (m: string) => unknown): Promise<PublishResult> {
   const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { account: true } });
@@ -149,67 +236,7 @@ export async function naverPublishPrivate(postId: string, log: (m: string) => un
     await log("제목 입력 완료");
 
     await (await first(frame, SELECTORS.body)).click();
-    for (const [i, seg] of segments.entries()) {
-      if (seg.type === "heading") {
-        // HTML <h2> 붙여넣기는 에디터가 굵은 글씨로만 남기고 실제 "소제목" 컴포넌트로 인식 못 함 —
-        // (먼저 글자를 넣고 나중에 "소제목"으로 바꾸면 안의 글자가 통째로 사라지는 버그가 있어서)
-        // 지금 있는 빈 문단을 먼저 "소제목" 서식으로 바꾼 뒤 그 안에 글자를 입력합니다.
-        await setParagraphFormat(frame, page, SELECTORS.formatSectionTitle);
-        await page.keyboard.type(seg.text, { delay: 10 });
-        // 글자 크기가 프리셋 기본값이라 본문과 통일된 24 로 다시 지정 (방금 입력한 글자를 선택)
-        await page.keyboard.press("Shift+Home");
-        await (await first(frame, SELECTORS.fontSizeDropdown)).click();
-        await page.waitForTimeout(300);
-        await (await first(frame, SELECTORS.fontSize24)).click();
-        // 글자 크기 적용 직후 바로 Enter 를 누르면 에디터 내부 상태 동기화(디바운스)가 끝나기 전이라
-        // 방금 입력한 글자가 통째로 사라지는 경쟁 상태 버그가 있어서(실측: 200ms 는 실패, 1200ms 는 성공)
-        // 넉넉히 기다린 뒤에 문단을 넘깁니다.
-        await page.waitForTimeout(1200);
-        await page.keyboard.press("End");
-        await page.keyboard.press("Enter");
-        // 다음 문단이 소제목 서식을 이어받지 않도록 본문으로 되돌림
-        await setParagraphFormat(frame, page, SELECTORS.formatBody);
-      } else if (seg.type === "html") {
-        await pasteHtml(page, seg.html);
-      } else {
-        const before = await frame.locator(SELECTORS.uploadedImage[0]).count();
-        const chooser = page.waitForEvent("filechooser", { timeout: 10_000 });
-        await (await first(frame, SELECTORS.imageButton)).click();
-        await (await chooser).setFiles(seg.localPath);
-        await frame.waitForFunction(
-          ([sel, n]) => document.querySelectorAll(sel as string).length > (n as number),
-          [SELECTORS.uploadedImage[0], before] as const,
-          { timeout: 30_000 },
-        );
-        await page.waitForTimeout(800);
-        // 문서에 이미지가 여러 장이면 AI 활용 설정·사진 설명 칸도 장마다 하나씩 존재합니다.
-        // 페이지 전체에서 첫 번째 것만 찾으면 항상 첫 사진 것을 건드리게 되므로, 방금 올린(마지막) 이미지 범위 안에서만 찾습니다.
-        const lastImage = frame.locator(SELECTORS.uploadedImage[0]).last();
-        // 사진을 선택해야(속성 툴바가 뜬 상태에서만) AI 활용 설정 버튼과 사진 설명 칸이 나타남
-        await lastImage.locator(".se-image-resource").click({ timeout: 3000 }).catch(() => undefined);
-        await page.waitForTimeout(300);
-        if (seg.credit === "AI 생성 이미지") {
-          await tryClick(frame, SELECTORS.sidebarClose); // 라이브러리 패널이 열려 있으면 버튼을 가려서 먼저 닫음
-          await lastImage.locator(SELECTORS.aiMarkToggle[0]).click({ timeout: 2000 }).catch(() => undefined);
-          await page.waitForTimeout(200);
-        }
-        // 사진 설명(대체 텍스트) — 본문에 따로 문단을 만들지 않고 네이버 자체의 "사진 설명" 칸에 직접 입력
-        if (seg.caption?.trim()) {
-          await lastImage.locator(SELECTORS.imageCaption[0]).click({ timeout: 3000 }).catch(() => undefined);
-          await page.keyboard.type(seg.caption.trim(), { delay: 10 });
-        }
-        // 이미지(+설명 칸) 아래 새 문단으로 커서 이동 — "사진 설명" 칸은 이미지 컴포넌트 안에 격리된 별도
-        // 편집영역이라 ArrowDown 으로는 못 빠져나오고(다음 내용이 캡션 안에 그대로 이어 붙는 버그가 있었음),
-        // 네이버가 이미지 삽입 시 자동으로 만들어 두는 바로 다음 본문 문단을 직접 클릭해서 포커스를 옮깁니다.
-        const nextPara = lastImage.locator("xpath=following-sibling::*[contains(@class,'se-text')][1]");
-        if (await nextPara.count()) {
-          await nextPara.click({ timeout: 2000 }).catch(() => undefined);
-        } else {
-          await page.keyboard.press("ArrowDown").catch(() => undefined);
-        }
-      }
-      if (i % 3 === 0) await log(`본문 입력 중… (${i + 1}/${segments.length})`);
-    }
+    await writeSegments(page, frame, segments, log);
     await log("본문 입력 완료");
 
     if (mode === "draft") {
@@ -280,6 +307,30 @@ export async function naverMakePublic(postId: string, log: (m: string) => unknow
   }
 }
 
+/**
+ * 블로그에 실제로 올라가 있는 글 본문 읽기 — 로그인 세션으로 열어 비공개 글도 읽음(글은 바꾸지 않음).
+ * 비공개 발행 뒤 네이버 편집기에서 고친 내용·추가한 사진을 스튜디오에 반영하는 데 씀.
+ */
+export async function naverFetchPost(accountId: string, blogId: string, logNo: string): Promise<{ title: string; html: string; text: string; images: number }> {
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch(launchOptions({ headless: true }));
+  try {
+    const context = await browser.newContext(hasNaverSession(accountId) ? { storageState: naverStatePath(accountId), locale: "ko-KR" } : { locale: "ko-KR" });
+    const page = await context.newPage();
+    await page.goto(`https://blog.naver.com/PostView.naver?blogId=${blogId}&logNo=${logNo}`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.waitForTimeout(2500);
+    const r = await page.evaluate(`(() => {
+      const main = document.querySelector(".se-main-container");
+      const title = (document.querySelector(".se-title-text") || {}).innerText || "";
+      return main ? { title: title.trim(), html: main.innerHTML, text: main.innerText, images: main.querySelectorAll("img.se-image-resource").length } : null;
+    })()`);
+    if (!r) throw new Error("네이버 글 본문을 찾지 못했어요 (삭제됐거나 로그인 세션이 만료됐을 수 있어요)");
+    return r as { title: string; html: string; text: string; images: number };
+  } finally {
+    await browser.close();
+  }
+}
+
 /** 네이버 블로그 RSS 로 공개된 글 목록 확인 (발행 확인·URL 매칭용) */
 export async function naverRss(blogId: string): Promise<{ title: string; link: string; pubDate: string }[]> {
   const res = await fetch(`https://rss.blog.naver.com/${blogId}.xml`, { signal: AbortSignal.timeout(10_000) });
@@ -313,6 +364,9 @@ const STAGE: Record<keyof typeof SELECTORS, SelectorCheck["stage"]> = {
   formatDropdown: "editor",
   formatSectionTitle: "popup",
   formatBody: "popup",
+  divider: "editor",
+  dividerStyle: "editor",
+  dividerLong: "popup",
   fontSizeDropdown: "editor",
   fontSize24: "popup",
   aiMarkToggle: "popup",

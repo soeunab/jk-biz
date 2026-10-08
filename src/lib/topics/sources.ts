@@ -76,6 +76,108 @@ function toNum(v: unknown): number {
   return 0;
 }
 
+/** 검색광고 키워드도구 응답 한 줄 → AdKeyword */
+function adKeywordOf(k: Record<string, unknown>): AdKeyword {
+  return {
+    keyword: String(k.relKeyword),
+    monthlyPc: toNum(k.monthlyPcQcCnt),
+    monthlyMobile: toNum(k.monthlyMobileQcCnt),
+    monthlyClicks: toNum(k.monthlyAvePcClkCnt) + toNum(k.monthlyAveMobileClkCnt),
+    compIdx: String(k.compIdx ?? ""),
+    adDepth: toNum(k.plAvgDepth),
+  };
+}
+
+/** 검색광고 API 서명 GET (/keywordstool) */
+async function searchAdGet(query: string) {
+  const cred = env.naverSearchAd;
+  if (!cred) throw new Error("네이버 검색광고 API 키가 없어요 (NAVER_AD_API_KEY 등)");
+  const path = "/keywordstool";
+  const ts = Date.now().toString();
+  const signature = createHmac("sha256", cred.secret).update(`${ts}.GET.${path}`).digest("base64");
+  return fetchJson<{ keywordList?: Record<string, unknown>[] }>(`https://api.searchad.naver.com${path}?${query}`, {
+    headers: { "X-Timestamp": ts, "X-API-KEY": cred.key, "X-Customer": cred.customer, "X-Signature": signature },
+  });
+}
+
+/**
+ * 업종별 키워드 — 시드 없이 검색광고 업종 번호(biztpId)만으로 키워드 최대 1,200개 (황금키워드 발굴용).
+ * 2026-10-07 실측: 1~300번대에 값이 있고 500 이상은 빈 결과. 빈 결과는 빈 배열.
+ */
+export async function naverSearchAdByIndustry(biztpId: number): Promise<AdKeyword[]> {
+  const data = await searchAdGet(`biztpId=${biztpId}&showDetail=1`);
+  return (data.keywordList ?? []).map(adKeywordOf);
+}
+
+/**
+ * 최근 N일 안에 발행된 블로그 글 수 — 블로그 검색을 최신순 100개로 받아 날짜로 셈 (대행사가 보는 '월간 발행량').
+ * 100개가 모두 기간 안이면 100 이상이라는 뜻이라 100 으로 돌려줌(화면에서 "100+").
+ */
+export async function naverRecentPostCount(q: string, days = 30): Promise<number | null> {
+  const cred = env.naverOpenApi;
+  if (!cred) return null;
+  const data = await fetchJson<{ items?: { postdate?: string }[] }>(
+    `${API_HUB}/search/v1/blog?query=${encodeURIComponent(q)}&display=100&sort=date`,
+    { headers: { "X-NCP-APIGW-API-KEY-ID": cred.id, "X-NCP-APIGW-API-KEY": cred.secret } },
+  );
+  return countSince(data.items ?? [], days);
+}
+
+/** postdate(YYYYMMDD) 가 오늘부터 days 일 안인 글 수 */
+export function countSince(items: { postdate?: string }[], days: number, now = new Date()): number {
+  const cut = ymd(new Date(now.getTime() - days * 86_400_000)).replace(/-/g, "");
+  return items.filter((i) => (i.postdate ?? "") >= cut).length;
+}
+
+/** 네이버가 블로그 섹션 검색 요청을 막은 것으로 보일 때 (403·429·HTML 응답 등) — 이번 실행의 화면 조회를 멈춤 */
+export class SectionBlockedError extends Error {}
+
+/** 블로그 섹션 검색 화면이 알려 주는 문서 수의 상한 — 이 값이면 실제는 그 이상 */
+export const SECTION_COUNT_CAP = 1000;
+
+/**
+ * 네이버 블로그 섹션 검색(section.blog.naver.com) 화면의 검색 결과 수 — 공식 API 한도(월 24,950회)를 쓰지 않음.
+ * 2026-10-07 실측: 공식 API 와 거의 같은 값(퀸스넥 591 vs 599, 기간 지정 34 = 34)이지만 1,000 이 상한.
+ * 비공식 화면 데이터라 호출하는 쪽에서 천천히(초당 2회 이하) 부르고, 막히면 SectionBlockedError 로 멈춥니다.
+ * days 를 주면 최근 days 일 안에 발행된 글 수.
+ */
+export async function naverSectionBlogCount(q: string, days?: number): Promise<number> {
+  const range = days ? `startDate=${ymd(daysAgo(days))}&endDate=${ymd(new Date())}` : "startDate=&endDate=";
+  const url = `https://section.blog.naver.com/ajax/SearchList.naver?countPerPage=7&currentPage=1&${range}&keyword=${encodeURIComponent(q)}&orderBy=sim&type=post`;
+  const res = await fetch(url, { headers: { "User-Agent": UA, Referer: "https://section.blog.naver.com/" }, signal: AbortSignal.timeout(10_000) });
+  if (res.status === 403 || res.status === 429) throw new SectionBlockedError(`블로그 섹션 검색 ${res.status}`);
+  const text = await res.text();
+  const json = text.replace(/^\)\]\}',?\s*/, "");
+  let data: { result?: { totalCount?: number } };
+  try {
+    data = JSON.parse(json);
+  } catch {
+    throw new SectionBlockedError("블로그 섹션 검색이 데이터 대신 다른 화면을 돌려줌");
+  }
+  const n = data.result?.totalCount;
+  if (typeof n !== "number") throw new SectionBlockedError("블로그 섹션 검색 응답에 결과 수가 없음");
+  return n;
+}
+
+/** 데이터랩 최근 30일 일간 추이(상대값 0~100) — 황금키워드 상세 패널용, 키워드 1개 */
+export async function naverDailyTrend(keyword: string, days = 30): Promise<{ date: string; ratio: number }[]> {
+  const cred = env.naverOpenApi;
+  if (!cred) return [];
+  const data = await fetchJson<{ results?: { data: { period: string; ratio: number }[] }[] }>(`${API_HUB}/search-trend/v1/search`, {
+    method: "POST",
+    headers: { "X-NCP-APIGW-API-KEY-ID": cred.id, "X-NCP-APIGW-API-KEY": cred.secret, "Content-Type": "application/json" },
+    body: JSON.stringify({ startDate: ymd(daysAgo(days)), endDate: ymd(daysAgo(1)), timeUnit: "date", keywordGroups: [{ groupName: keyword, keywords: [keyword] }] }),
+  });
+  // 데이터랩은 값이 0인 날을 빼고 주므로 날짜를 채움
+  const got = new Map((data.results?.[0]?.data ?? []).map((d) => [d.period, d.ratio]));
+  const out: { date: string; ratio: number }[] = [];
+  for (let i = days; i >= 1; i--) {
+    const d = ymd(daysAgo(i));
+    out.push({ date: d, ratio: got.get(d) ?? 0 });
+  }
+  return out;
+}
+
 /**
  * 네이버 검색광고 키워드도구 — 월간 검색량, 광고 경쟁도.
  * 힌트 5개씩 나눠 호출하고, 한 묶음이 실패해도(특수문자 힌트·일시적 제한) 나머지는 계속합니다. 전부 실패하면 첫 오류를 던집니다.
@@ -143,13 +245,40 @@ export async function naverBlogDocCount(q: string): Promise<number | null> {
 
 /** 네이버 데이터랩 검색어 트렌드 — 최근 4주 vs 이전 8주 비율 (1.0 = 보합) */
 export async function naverTrendMomentum(keywords: string[]): Promise<Record<string, number>> {
+  const profile = await naverTrendProfile(keywords);
+  return Object.fromEntries(Object.entries(profile).map(([k, v]) => [k, v.momentum]));
+}
+
+/** 상시형(꾸준한 수요) / 변동형(계절·시기에 따라 오르내림) / 이슈형(한때 튄 뒤 식음) */
+export type Seasonality = "evergreen" | "seasonal" | "spike";
+
+/**
+ * 1년치 주간 검색 추이로 수요 성격을 나눕니다 (플레이북의 '이슈성' 필터 — 상시형과 이슈형을 섞어 포트폴리오 구성).
+ * - 이슈형: 가장 높은 4주가 1년 합계의 40% 이상 (한때 몰렸다가 식은 수요)
+ * - 변동형: 변동계수(표준편차÷평균) 0.5 이상
+ * - 상시형: 그 외
+ * 데이터가 거의 없으면(평균 0) null.
+ */
+export function classifySeasonality(weekly: number[]): Seasonality | null {
+  if (weekly.length < 12) return null;
+  const sum = weekly.reduce((a, b) => a + b, 0);
+  const mean = sum / weekly.length;
+  if (!mean) return null;
+  const top4 = [...weekly].sort((a, b) => b - a).slice(0, 4).reduce((a, b) => a + b, 0);
+  if (top4 / sum >= 0.4) return "spike";
+  const sd = Math.sqrt(weekly.reduce((a, b) => a + (b - mean) ** 2, 0) / weekly.length);
+  return sd / mean >= 0.5 ? "seasonal" : "evergreen";
+}
+
+/** 데이터랩 1년치 주간 추이 → 모멘텀(최근 4주 ÷ 그 전 8주) + 수요 성격 — 같은 API 호출 1번으로 둘 다 */
+export async function naverTrendProfile(keywords: string[]): Promise<Record<string, { momentum: number; seasonality: Seasonality | null }>> {
   const cred = env.naverOpenApi;
-  const result: Record<string, number> = {};
+  const result: Record<string, { momentum: number; seasonality: Seasonality | null }> = {};
   if (!cred) return result;
   for (let i = 0; i < keywords.length; i += 5) {
     const batch = keywords.slice(i, i + 5);
     const body = {
-      startDate: ymd(daysAgo(7 * 12)),
+      startDate: ymd(daysAgo(7 * 52)),
       endDate: ymd(daysAgo(1)),
       timeUnit: "week",
       keywordGroups: batch.map((k) => ({ groupName: k, keywords: [k] })),
@@ -166,8 +295,8 @@ export async function naverTrendMomentum(keywords: string[]): Promise<Record<str
     for (const r of data.results ?? []) {
       const ratios = r.data.map((d) => d.ratio);
       const recent = avg(ratios.slice(-4));
-      const before = avg(ratios.slice(0, -4));
-      result[r.title] = before > 0 ? recent / before : recent > 0 ? 2 : 1;
+      const before = avg(ratios.slice(-12, -4));
+      result[r.title] = { momentum: before > 0 ? recent / before : recent > 0 ? 2 : 1, seasonality: classifySeasonality(ratios) };
     }
   }
   return result;

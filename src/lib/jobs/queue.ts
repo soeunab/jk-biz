@@ -8,6 +8,7 @@ import { db } from "../db";
 export type JobType =
   | "topic.discover"
   | "topic.channels"
+  | "topic.titles"
   | "topic.cleanup"
   | "post.generate"
   | "post.images"
@@ -18,7 +19,11 @@ export type JobType =
   | "cardnews.generate"
   | "cardnews.publish"
   | "analytics.sync"
-  | "insights.generate";
+  | "insights.generate"
+  | "post.optimize"
+  | "topic.golden"
+  | "post.syncRemote"
+  | "post.convertRemote";
 
 export async function enqueue(type: JobType, payload: Record<string, unknown> = {}, runAt?: Date) {
   return db.job.create({ data: { type, payload: payload as Prisma.InputJsonValue, runAt: runAt ?? new Date() } });
@@ -45,10 +50,17 @@ export async function enqueueOnce(type: JobType, payload: Record<string, unknown
   return enqueue(type, payload);
 }
 
-/** 가장 오래된 대기 작업 하나를 원자적으로 가져옵니다. */
-export async function claimNext() {
+
+/**
+ * 오래 걸리는 백그라운드 작업 — 워커가 별도 줄(lane)에서 처리해, 원고 생성·제목 만들기 같은 일반 작업을 막지 않음.
+ * (황금키워드 발굴은 블로그 섹션 화면을 초당 2회로 천천히 조회해 한 번에 1시간 이상 걸림)
+ */
+export const BACKGROUND_JOBS: JobType[] = ["topic.golden"];
+
+/** 가장 오래된 대기 작업 하나를 원자적으로 가져옵니다. lane: background 면 BACKGROUND_JOBS 만, main 이면 그 외만 */
+export async function claimNext(lane: "main" | "background" = "main") {
   const next = await db.job.findFirst({
-    where: { status: "QUEUED", runAt: { lte: new Date() } },
+    where: { status: "QUEUED", runAt: { lte: new Date() }, type: lane === "background" ? { in: BACKGROUND_JOBS } : { notIn: BACKGROUND_JOBS } },
     orderBy: { createdAt: "asc" },
   });
   if (!next) return null;

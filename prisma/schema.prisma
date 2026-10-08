@@ -97,6 +97,8 @@ model Post {
   republishes     Post[]    @relation("Republish")
   /// BLOGGER | NAVER
   platform        String
+  /// SEARCH(검색 유입용) | HOMEFEED(네이버 홈피드용 — 궁금증 제목·첫 문장 후킹·댓글 유도)
+  format          String    @default("SEARCH")
   /// GENERATING | DRAFT | PRIVATE(비공개 발행/임시저장 완료, 검수 대기) | APPROVED | PUBLISHED | REJECTED(반려) | FAILED
   status          String    @default("GENERATING")
   title           String    @default("")
@@ -118,6 +120,17 @@ model Post {
   research        Json?      
   remoteId        String?
   remoteUrl       String?
+  /// studio(스튜디오에서 만든 글) | imported([기존 글 등록]으로 가져온 글)
+  origin          String    @default("studio")
+  /// 블로그에 실제로 올라가 있는 본문(블로그에서 가져오기) — 비공개 발행 뒤 블로그에서 고친 내용 확인용
+  remoteHtml      String?
+  remoteSyncedAt  DateTime?
+  /// 스튜디오가 마지막으로 올린 본문 텍스트 — 블로그에서 고쳤는지 비교 기준
+  remoteBase      String?
+  /// 가져온 본문과 기준 비교 { edited, similarity, chars, baseChars, images, baseImages, title, titleChanged }
+  remoteDiff      Json?
+  /// 제목 전략 기록 — 수명(상시/반복/이슈)·시간 표현 검색량·고정 여부·바뀐 이유·보조 검색어 (제목 유형별 유입 비교용)
+  titlePlan       Json?
   reviewerNote    String    @default("")
   error           String?
   privateAt       DateTime?
@@ -225,6 +238,8 @@ model PostMetric {
   clicks      Int      @default(0)
   impressions Int      @default(0)
   position    Float?
+  /// GA4 참여 시간 합계(초) — 페이지뷰로 나누면 글별 평균 체류시간
+  engagementSec Float?
   /// 상위 유입 검색어 [{query, clicks, impressions}]
   queries     Json?     
 
@@ -327,4 +342,53 @@ model ManualRequest {
   updatedAt  DateTime @updatedAt
 
   @@index([status])
+}
+
+/// 황금키워드 발굴 — 시드 없이 검색광고 업종별 키워드 + 자동완성 확장으로 모은 풀 (src/lib/topics/golden.ts)
+/// 검색량 구간(tier)별로 문서수÷검색량 비율이 낮은 순으로 보여 줌. 문서수·최근 발행·AI 판정은 저장해 두고 재사용.
+model GoldenKeyword {
+  id            String    @id @default(cuid())
+  /// 화면에 보여 줄 형태 (자동완성에서 온 띄어쓰기 있는 표현 우선)
+  keyword       String
+  /// 공백·기호 제거 소문자 — 중복 판단 기준 ("비판텐퀸스넥" = "비판텐 퀸스넥")
+  normalized    String    @unique
+  pc            Int       @default(0)
+  mobile        Int       @default(0)
+  volume        Int       @default(0)
+  /// beginner | intermediate | advanced | expert | master | challenger | legend
+  tier          String
+  compIdx       String?
+  monthlyClicks Float?
+  /// industry(검색광고 업종) | autocomplete(자동완성 확장)
+  source        String    @default("industry")
+  biztpIds      Json?
+  documentCount Int?
+  /// 블로그 섹션 검색 화면 값이 상한(1000)에 걸림 → 실제 문서수는 1000 이상 (비율은 하한값)
+  docsCapped    Boolean?
+  /// 문서수 ÷ 검색량 (낮을수록 좋음)
+  ratio         Float?
+  docsAt        DateTime?
+  /// 최근 30일 블로그 발행 수 (100 = 100개 이상)
+  recent30      Int?
+  recentAt      DateTime?
+  /// evergreen | seasonal | spike
+  seasonality   String?
+  seasonAt      DateTime?
+  /// 상세 패널용 최근 30일 일간 추이 [{date, ratio}]
+  trend         Json?
+  trendAt       DateTime?
+  /// AI 판정: 블로그 글로 답할 수 있는 검색어인지 (null = 미판정)
+  blogFit       Boolean?
+  fitNote       String?
+  /// 어울리는 내 블로그 계정 id 목록
+  fitAccounts   Json?
+  fitAt         DateTime?
+  collectedAt   DateTime  @default(now())
+  /// 업종 수집·자동완성 확장에서 마지막으로 다시 나온 시각 — 오래 안 나오면 정리 대상 (updatedAt 은 측정만 해도 바뀌어서 따로 둠)
+  seenAt        DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tier, ratio])
+  @@index([seenAt])
+  @@index([tier, updatedAt])
 }

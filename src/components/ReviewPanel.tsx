@@ -9,13 +9,15 @@ type Props = {
   postId: string;
   report: { score: number; checks: SeoCheck[]; stats: Record<string, number>; similarity?: { max: number; with: { id: string; title: string } | null; warn: boolean } } | null;
   checklist: string[];
+  /** 확인 항목이 아닌 제안 (예: 네이버 클립) */
+  tip?: string;
   reviewerNote: string;
   meta: { keyword: string; description: string; slug: string; tags: string[]; sources: { title: string; url: string }[] };
 };
 
 const GROUPS = ["사실·정책", "SEO", "AEO", "GEO", "수익화", "참고"] as const;
 
-export function ReviewPanel({ postId, report, checklist, reviewerNote, meta }: Props) {
+export function ReviewPanel({ postId, report, checklist, tip, reviewerNote, meta }: Props) {
   const key = `review-${postId}`;
   const [done, setDone] = useState<Record<number, boolean>>({});
   const [note, setNote] = useState(reviewerNote);
@@ -81,8 +83,10 @@ export function ReviewPanel({ postId, report, checklist, reviewerNote, meta }: P
       <div className="card">
         <h3 className="mb-2 font-semibold">사람 검수 체크리스트</h3>
         <ul className="flex flex-col gap-2 text-sm">
-          {/* "사실·수치·요금 일치"는 AI 사실 검수(웹 검색 기반, 위 카드)가 하는 일이라 여기서 사람에게 다시 확인시키지 않음 */}
-          {[...checklist, "[경험 추가] 자리를 실제 경험으로 채움", "제휴 링크·대가성 문구 확인"].map((c, i) => (
+          {/* "사실·수치·요금 일치"는 AI 사실 검수(웹 검색 기반, 위 카드)가 하는 일이라 여기서 사람에게 다시 확인시키지 않음.
+              체크리스트는 서버에서 사람이 실제로 할 일만 걸러서 넘김(content/checklist.ts) */}
+          {checklist.length === 0 && <li className="text-xs text-gray-500">사람이 따로 확인할 항목이 없어요.</li>}
+          {checklist.map((c, i) => (
             <li key={i}>
               <label className="flex cursor-pointer items-start gap-2">
                 <input type="checkbox" className="mt-1" checked={!!done[i]} onChange={() => toggle(i)} />
@@ -91,6 +95,7 @@ export function ReviewPanel({ postId, report, checklist, reviewerNote, meta }: P
             </li>
           ))}
         </ul>
+        {tip && <p className="mt-2 text-xs text-gray-500">💡 {tip}</p>}
         <textarea className="input mt-3" rows={3} placeholder="검수 메모" value={note} onChange={(e) => setNote(e.target.value)} />
         <button className="btn-secondary mt-2 w-full" disabled={busy || note === reviewerNote} onClick={() => submit(`/api/posts/${postId}`, { reviewerNote: note }, "PATCH")}>
           {busy && <Spinner />}메모 저장

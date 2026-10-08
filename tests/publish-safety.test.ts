@@ -277,9 +277,15 @@ describe("A3 네이버 중복 글 방지", () => {
     await expect(naverPublishPrivate("n", () => undefined)).rejects.toThrow(/네이버 연결 해제/);
     expect(launch).not.toHaveBeenCalled();
   });
-  it("발행 화면 액션도 막고, 연결 해제 후에는 허용", async () => {
+  it("발행 화면 액션은 먼저 확인받고(글이 하나 더 생김), 확인하면 기존 연결을 끊고 올림 — 연결 해제 후에도 허용", async () => {
+    // 2026-10-08 사용자 결정: 네이버 [수정본 다시 올리기]는 막지 않고 '글이 하나 더 생긴다'를 확인받은 뒤에만
     naverPost({ status: "FAILED", remoteId: "223000000001" });
-    expect((await call(action, "n", { action: "publishPrivate" })).status).toBe(400);
+    const ask = await call(action, "n", { action: "publishPrivate" });
+    expect(ask.body).toMatchObject({ needsConfirm: true });
+    expect(posts.get("n")).toMatchObject({ remoteId: "223000000001" });
+    expect((await call(action, "n", { action: "publishPrivate", force: true })).status).toBe(200);
+    expect(posts.get("n")).toMatchObject({ remoteId: null, remoteUrl: null });
+    naverPost({ status: "FAILED", remoteId: "223000000001" });
     expect((await call(action, "n", { action: "unlinkRemote" })).status).toBe(200);
     expect(posts.get("n")).toMatchObject({ remoteId: null, remoteUrl: null, status: "DRAFT" });
     expect((await call(action, "n", { action: "publishPrivate" })).status).toBe(200);

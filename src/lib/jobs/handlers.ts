@@ -1,6 +1,7 @@
-import { discoverTopics, type DiscoverOptions } from "../topics/discover";
+import { discoverTopics, generateTitles, type DiscoverOptions } from "../topics/discover";
 import { discoverFromChannels, type ChannelDiscoverOptions } from "../topics/channels/discover";
-import { cleanupDismissedTopics } from "../topics/cleanup";
+import { cleanupDismissedTopics, cleanupGolden } from "../topics/cleanup";
+import { runGoldenDiscovery, type GoldenPayload } from "../topics/golden";
 import { runGeneratePost } from "../content/service";
 import { buildPostImages } from "../images/pipeline";
 import { rerenderPost, readManuscript } from "../content/service";
@@ -8,6 +9,9 @@ import { runGenerateCardNews } from "../cardnews";
 import { publishPrivate, publishPublic, publishSocial } from "../publishers";
 import { syncAnalytics } from "../analytics/sync";
 import { generateInsights } from "../insights/engine";
+import { runOptimize } from "../insights/optimize";
+import { syncRemote } from "../publishers/remote";
+import { convertRemote } from "../content/convert";
 import { db } from "../db";
 import { runAiReview } from "../content/review";
 import { rewriteSection } from "../content/section";
@@ -19,7 +23,8 @@ type Handler = (payload: Record<string, unknown>, ctx: JobContext) => Promise<un
 export const handlers: Record<JobType, Handler> = {
   "topic.discover": (p, ctx) => discoverTopics(p as DiscoverOptions, ctx),
   "topic.channels": (p, ctx) => discoverFromChannels(p as ChannelDiscoverOptions, ctx),
-  "topic.cleanup": (_p, ctx) => cleanupDismissedTopics(ctx),
+  "topic.titles": (p, ctx) => generateTitles(String(p.topicId), ctx),
+  "topic.cleanup": async (_p, ctx) => ({ ...(await cleanupDismissedTopics(ctx)), golden: await cleanupGolden(ctx) }),
   "post.generate": (p, ctx) => runGeneratePost(String(p.postId), ctx),
   "post.images": async (p, ctx) => {
     const post = await db.post.findUniqueOrThrow({ where: { id: String(p.postId) } });
@@ -51,4 +56,8 @@ export const handlers: Record<JobType, Handler> = {
   "cardnews.publish": (p, ctx) => publishSocial(String(p.socialPostId), ctx),
   "analytics.sync": (_p, ctx) => syncAnalytics(ctx),
   "insights.generate": (_p, ctx) => generateInsights(ctx),
+  "post.optimize": (p, ctx) => runOptimize(String(p.insightId), ctx),
+  "topic.golden": (p, ctx) => runGoldenDiscovery(p as GoldenPayload, ctx),
+  "post.syncRemote": (p, ctx) => syncRemote(String(p.postId), (m) => ctx.log(m)),
+  "post.convertRemote": (p, ctx) => convertRemote(String(p.postId), ctx),
 };

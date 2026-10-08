@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Spinner, waitJobs } from "./ActionButton";
 import { CATEGORY_CHOICES } from "@/lib/topics/channels/config";
-import { AI_FOCUS_TERMS, NO_RESTRICTION } from "@/lib/topics/channels/filters";
+import { NO_RESTRICTION } from "@/lib/topics/channels/filters";
 import type { ChannelId } from "@/lib/topics/channels/types";
 
 type AccountOpt = { id: string; name: string; platform: string };
@@ -40,53 +40,29 @@ export function useSubmit() {
   return { busy, msg, setMsg, submit };
 }
 
+/** 검색어 기반 발굴 — 입력한 시드 키워드 자체가 주제 */
 export function DiscoverForm() {
   const { busy, msg, submit } = useSubmit();
   const [seeds, setSeeds] = useState("");
-  const [domain, setDomain] = useState("");
-  const [platform, setPlatform] = useState("BOTH");
-  const [persona, setPersona] = useState("ANY");
   const [limit, setLimit] = useState(12);
   return (
     <form
-      className="card grid gap-3 md:grid-cols-[1fr_auto_auto_auto_auto] md:items-end"
+      className="card grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end"
       onSubmit={(e) => {
         e.preventDefault();
-        submit("/api/topics/discover", { seeds, domain, platform, persona, limit });
+        submit("/api/topics/discover", { seeds, limit });
       }}
     >
       <div>
-        <label className="label">시드 키워드 (쉼표 구분, 비우면 브랜드 기본 키워드)</label>
-        <input className="input" value={seeds} onChange={(e) => setSeeds(e.target.value)} placeholder="예: 제미나이 사용법, 클로드 보고서, 프리랜서 AI" />
-      </div>
-      <div className="md:col-span-5">
-        <label className="label">이번 발굴의 주제 도메인 (선택 — 브랜드와 다른 콘셉트의 계정용 시드일 때만. 비우면 브랜드 미션 사용)</label>
-        <input className="input" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="예: 경제·생활 혜택 정보 (AI 도구와 무관, 정확한 사실 기반 생활 정보 블로그)" />
-      </div>
-      <div>
-        <label className="label">플랫폼</label>
-        <select className="input" value={platform} onChange={(e) => setPlatform(e.target.value)}>
-          <option value="BOTH">전체</option>
-          <option value="NAVER">네이버 우선</option>
-          <option value="BLOGGER">구글 우선</option>
-        </select>
-      </div>
-      <div>
-        <label className="label">독자</label>
-        <select className="input" value={persona} onChange={(e) => setPersona(e.target.value)}>
-          <option value="ANY">골고루</option>
-          <option value="SOLO">1인 가구</option>
-          <option value="FREELANCER">프리랜서</option>
-          <option value="OFFICE">직장인</option>
-          <option value="GENERAL">입문자</option>
-        </select>
+        <label className="label">시드 키워드 (쉼표 구분) — 줄인 키워드·함께 많이 찾는까지 넓혀 롱테일 키워드를 찾아요 (제목은 고른 키워드에서 따로 만들어요)</label>
+        <input className="input" value={seeds} onChange={(e) => setSeeds(e.target.value)} placeholder="예: 신한은행 유출, 청년미래적금, 제미나이 사용법" />
       </div>
       <div>
         <label className="label">개수</label>
         <input className="input w-20" type="number" min={3} max={30} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
       </div>
-      <button className="btn-primary" disabled={busy}>{busy && <Spinner />}🔎 주제 발굴</button>
-      {msg && <p className="text-xs text-gray-500 md:col-span-5">{msg}</p>}
+      <button className="btn-primary" disabled={busy}>{busy && <Spinner />}🔎 롱테일 키워드 찾기</button>
+      {msg && <p className="text-xs text-gray-500 md:col-span-3">{msg}</p>}
     </form>
   );
 }
@@ -104,23 +80,19 @@ const CHANNEL_OPTIONS: [ChannelId, string][] = [
 export function ChannelDiscoverForm() {
   const { busy, msg, submit } = useSubmit();
   const [category, setCategory] = useState("비즈니스·경제");
-  const [domain, setDomain] = useState("");
   const [limit, setLimit] = useState(10);
   const [channels, setChannels] = useState<ChannelId[]>(CHANNEL_OPTIONS.map(([c]) => c));
-  const [aiFocus, setAiFocus] = useState(false);
-  const [focus, setFocus] = useState("");
   return (
     <form
       className="card grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end"
       onSubmit={(e) => {
         e.preventDefault();
-        const focusTerms = [...(aiFocus ? AI_FOCUS_TERMS : []), ...focus.split(",").map((t) => t.trim()).filter(Boolean)];
-        submit("/api/topics/discover-channels", { category, domain, limit, channels, focusTerms });
+        submit("/api/topics/discover-channels", { category, limit, channels });
       }}
     >
       <p className="text-xs text-gray-500 md:col-span-3">
-        지금 여러 채널에서 동시에 화제인 소재를 찾아 같은 사건끼리 묶고, 참여 채널 수·신선도·랭킹·트렌드 급등률로 점수를 매겨요. 부정 사건·정치 이슈는 제외하고,
-        고른 카테고리에 맞는 소재만 저장합니다. 6시간 넘은 기사는 빼고, 이미 저장한 소재·같은 사건은 건너뛰어요. 수집에 4~6분 걸려요.
+        지금 여러 채널에서 동시에 화제인 사건을 찾아 <b>메인 키워드(씨드)만</b> 저장해요 (예: 신한은행 유출). 참여 채널 수·신선도·랭킹·트렌드 급등률로 점수를 매기고,
+        부정 사건·정치 이슈·6시간 넘은 기사·이미 저장한 소재는 빼요. 결과 목록에서 골라 바로 [원고 생성]하세요. 수집에 4~6분 걸려요.
       </p>
       <div>
         <label className="label">블로그 카테고리 (네이버 32개)</label>
@@ -135,23 +107,6 @@ export function ChannelDiscoverForm() {
         <input className="input w-20" type="number" min={1} max={30} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
       </div>
       <button className="btn-primary" disabled={busy || !channels.length}>{busy && <Spinner />}📡 실시간 트렌드에서 발굴</button>
-      <div className="md:col-span-3">
-        <label className="label">블로그 주제 설명 (선택 — 비우면 카테고리 기준. AI 가 제목·구성안을 이 주제에 맞춰요)</label>
-        <input className="input" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="예: 경제·생활 혜택 정보 (AI 도구와 무관, 정확한 사실 기반 생활 정보 블로그)" />
-      </div>
-      <div className="flex flex-wrap items-center gap-3 md:col-span-3">
-        <label className="flex cursor-pointer items-center gap-1 text-sm">
-          <input type="checkbox" checked={aiFocus} onChange={(e) => setAiFocus(e.target.checked)} />
-          🤖 AI 관련 소재만
-        </label>
-        <input
-          className="input flex-1"
-          value={focus}
-          onChange={(e) => setFocus(e.target.value)}
-          placeholder="관심 단어 (쉼표로 구분, 선택) — 제목에 이 중 하나라도 있는 소재만 추천. 분류가 달라도 이 카테고리 소재로 봐요"
-        />
-      </div>
-      {aiFocus && <p className="-mt-2 text-xs text-gray-500 md:col-span-3">AI 관련 단어: {AI_FOCUS_TERMS.join(", ")}</p>}
       <div className="flex flex-wrap gap-2 md:col-span-3">
         {CHANNEL_OPTIONS.map(([c, label]) => (
           <label key={c} className={`cursor-pointer rounded-lg border px-2 py-1 text-xs ${channels.includes(c) ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-200"}`}>
@@ -179,17 +134,50 @@ export function AccountPicker({ accounts, value, onChange }: { accounts: Account
   );
 }
 
-export function GenerateFromTopic({ topicId, accounts, defaultPlatform }: { topicId: string; accounts: AccountOpt[]; defaultPlatform: string }) {
+export function GenerateFromTopic({
+  topicId,
+  accounts,
+  defaultPlatform,
+  defaultFormat = "SEARCH",
+}: {
+  topicId: string;
+  accounts: AccountOpt[];
+  defaultPlatform: string;
+  /** 네이버 글 형식 기본값 — 실시간 트렌드 주제는 홈판형 */
+  defaultFormat?: "SEARCH" | "HOMEFEED";
+}) {
   const { busy, msg, submit } = useSubmit();
   const [open, setOpen] = useState(false);
   const [sel, setSel] = useState<string[]>(accounts.filter((a) => defaultPlatform === "BOTH" || a.platform === defaultPlatform).slice(0, 2).map((a) => a.id));
+  const [format, setFormat] = useState(defaultFormat);
+  const naverSelected = accounts.some((a) => a.platform === "NAVER" && sel.includes(a.id));
+  // 주제 추천 플랫폼이 블로거여도 네이버 계정이 있으면 형식을 고를 수 있게 (홈판형은 네이버 계정에만 적용)
+  const hasNaver = accounts.some((a) => a.platform === "NAVER");
   if (!open) return <button className="btn-primary" onClick={() => setOpen(true)}>✍️ 원고 생성</button>;
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3">
       <div className="text-xs font-semibold">어느 블로그용 원고를 만들까요? (계정마다 다른 관점으로 작성)</div>
       <AccountPicker accounts={accounts} value={sel} onChange={setSel} />
+      {hasNaver && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-semibold">네이버 글 형식</span>
+          {(
+            [
+              ["SEARCH", "🔍 검색형", "검색 유입·AI 브리핑 인용용 — 직답·질문형 소제목·FAQ"],
+              ["HOMEFEED", "🏠 홈판형", "네이버 홈피드 노출용 — 궁금증 제목·첫 문장 후킹·댓글 유도 질문 (실시간 화제에 적합)"],
+            ] as const
+          ).map(([v, label, tip]) => (
+            <label key={v} title={tip} className={`cursor-pointer rounded-lg border px-2 py-1 ${format === v ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-200"}`}>
+              <input type="radio" className="mr-1" checked={format === v} onChange={() => setFormat(v)} />
+              {label}
+            </label>
+          ))}
+          <span className="text-gray-400">(블로거는 항상 검색형)</span>
+          {format === "HOMEFEED" && !naverSelected && <span className="text-amber-700">홈판형은 네이버 계정에만 적용돼요 — 위에서 🟢 네이버 계정을 선택하세요</span>}
+        </div>
+      )}
       <div className="flex gap-2">
-        <button className="btn-primary" disabled={busy || !sel.length} onClick={() => submit(`/api/topics/${topicId}/generate`, { accountIds: sel })}>
+        <button className="btn-primary" disabled={busy || !sel.length} onClick={() => submit(`/api/topics/${topicId}/generate`, { accountIds: sel, format })}>
           {busy && <Spinner />}생성 시작
         </button>
         <button className="btn-secondary" onClick={() => setOpen(false)}>취소</button>
@@ -199,60 +187,3 @@ export function GenerateFromTopic({ topicId, accounts, defaultPlatform }: { topi
   );
 }
 
-export function ManualPostForm({ accounts, sources = [] }: { accounts: AccountOpt[]; sources?: { id: string; title: string; account: string; platform: string }[] }) {
-  const { busy, msg, submit } = useSubmit();
-  const [sourcePostId, setSourcePostId] = useState("");
-  const [keyword, setKeyword] = useState("");
-  const [title, setTitle] = useState("");
-  const [persona, setPersona] = useState("OFFICE");
-  const [sel, setSel] = useState<string[]>([]);
-  return (
-    <form
-      className="card flex flex-col gap-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        submit("/api/posts", { keyword, title, persona, accountIds: sel, sourcePostId: sourcePostId || undefined });
-      }}
-    >
-      <h2 className="font-semibold">키워드로 바로 원고 만들기</h2>
-      <p className="-mt-2 text-xs text-gray-500">
-        &quot;ai&quot;·&quot;클로드&quot;처럼 짧은 단어를 넣으면 실제로 검색되는 롱테일 중 경쟁이 덜한 문구(예: 클로드 요금제)로 자동 전환해 제목 맨 앞에 씁니다. 원하는 문구가 정해져 있으면 구체적으로 적어 주세요.
-      </p>
-      <div className="grid gap-3 md:grid-cols-3">
-        <div>
-          <label className="label">핵심 키워드 *</label>
-          <input className="input" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="예: 클로드 엑셀 정리" />
-        </div>
-        <div>
-          <label className="label">가제 (선택)</label>
-          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
-        </div>
-        <div>
-          <label className="label">대상 독자</label>
-          <select className="input" value={persona} onChange={(e) => setPersona(e.target.value)}>
-            <option value="OFFICE">직장인</option>
-            <option value="FREELANCER">프리랜서</option>
-            <option value="SOLO">1인 가구</option>
-            <option value="GENERAL">입문자</option>
-          </select>
-        </div>
-      </div>
-      {sources.length > 0 && (
-        <div>
-          <label className="label">재발행 원본 (선택) — 지정하면 원본의 주제·키워드를 이어받아 다른 계정용으로 새로 씁니다</label>
-          <select className="input" value={sourcePostId} onChange={(e) => setSourcePostId(e.target.value)}>
-            <option value="">(없음 — 새 글)</option>
-            {sources.map((p) => (
-              <option key={p.id} value={p.id}>{p.platform === "NAVER" ? "🟢" : "🟠"} {p.account} · {p.title}</option>
-            ))}
-          </select>
-        </div>
-      )}
-      <AccountPicker accounts={accounts} value={sel} onChange={setSel} />
-      <div>
-        <button className="btn-primary" disabled={busy || (!keyword && !sourcePostId) || !sel.length}>{busy && <Spinner />}✍️ 원고 생성</button>
-        {msg && <span className="ml-3 text-xs text-gray-500">{msg}</span>}
-      </div>
-    </form>
-  );
-}

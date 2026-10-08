@@ -9,6 +9,7 @@ import path from "node:path";
  *   (API 과금 없음, 대신 데스크탑·Claude Code 와 같은 구독 사용 한도를 함께 씁니다)
  * - 원고 작성은 도구를 모두 끄고(--tools ""), 조사는 웹 검색·웹 페이지 읽기만 허용합니다.
  * - 빈 임시 폴더에서 실행해 이 프로젝트 파일·설정·MCP 를 건드리지 않습니다.
+ * - stream-json 으로 받아, 응답과 함께 오는 구독 사용량(rate_limit_event)을 대시보드용으로 기록합니다.
  */
 export class ClaudeCodeError extends Error {
   constructor(message: string, readonly kind: "not-installed" | "login" | "limit" | "timeout" | "failed") {
@@ -49,7 +50,8 @@ export function claudeCodeArgs(req: ClaudeCodeRequest): string[] {
   const tools = req.tools ?? [];
   const args = [
     "-p",
-    "--output-format", "json",
+    "--output-format", "stream-json",
+    "--verbose", // stream-json 은 -p 에서 --verbose 가 있어야 동작
     "--no-session-persistence",
     "--strict-mcp-config",
     "--model", req.model || process.env.CLAUDE_CODE_MODEL?.trim() || "sonnet",
@@ -77,13 +79,40 @@ export function classifyClaudeError(text: string): ClaudeCodeError {
   return new ClaudeCodeError(`Claude Code 실행 실패: ${text.slice(0, 300)}`, "failed");
 }
 
+export type UsageWindows = Record<string, { utilization: number; resetsAt: number | null }>;
+type ResultLine = { is_error?: boolean; result?: string; structured_output?: unknown; subtype?: string };
+
+/** stream-json 출력(줄마다 JSON)에서 최종 result 와 마지막 사용량 이벤트를 꺼냄. 예전 json 출력(한 덩어리)도 받아 줌 */
+export function parseClaudeStream(out: string): { result: ResultLine | null; usage: UsageWindows | null } {
+  let result: ResultLine | null = null;
+  let usage: UsageWindows | null = null;
+  for (const line of out.split("\n")) {
+    if (!line.trim()) continue;
+    let d: { type?: string; rate_limit_info?: { unifiedWindows?: UsageWindows } } & ResultLine;
+    try {
+      d = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (d.type === "result") result = d;
+    else if (d.type === "rate_limit_event" && d.rate_limit_info?.unifiedWindows) usage = d.rate_limit_info.unifiedWindows;
+  }
+  if (!result) {
+    try {
+      const whole = JSON.parse(out);
+      if (whole && typeof whole === "object" && !Array.isArray(whole)) result = whole;
+    } catch {}
+  }
+  return { result, usage };
+}
+
 /** claude -p 실행 → 구조화 결과(있으면) 또는 응답 텍스트 반환 */
 export async function runClaudeCode(req: ClaudeCodeRequest): Promise<{ text: string; structured?: unknown }> {
   const bin = claudeBin();
   if (!bin) throw new ClaudeCodeError("Claude Code(claude 명령)가 설치되어 있지 않아요. https://claude.com/claude-code 에서 설치 후 구독 계정으로 로그인하세요.", "not-installed");
   const cwd = mkdtempSync(path.join(tmpdir(), "jiwon4u-claude-"));
   try {
-    const out = await new Promise<string>((resolve, reject) => {
+    const { out, code, stderr: errText } = await new Promise<{ out: string; code: number | null; stderr: string }>((resolve, reject) => {
       const child = spawn(bin, claudeCodeArgs(req), { cwd, env: subscriptionEnv(), stdio: ["pipe", "pipe", "pipe"] });
       let stdout = "";
       let stderr = "";
@@ -100,14 +129,16 @@ export async function runClaudeCode(req: ClaudeCodeRequest): Promise<{ text: str
       child.on("close", (code) => {
         clearTimeout(timer);
         if (code !== 0 && !stdout.trim()) return reject(classifyClaudeError(stderr || `종료 코드 ${code}`));
-        resolve(stdout);
+        resolve({ out: stdout, code, stderr });
       });
       child.stdin.end(req.prompt);
     });
-    let parsed: { is_error?: boolean; result?: string; structured_output?: unknown; subtype?: string };
-    try {
-      parsed = JSON.parse(out);
-    } catch {
+    const { result: parsed, usage } = parseClaudeStream(out);
+    // 사용량 기록은 부가 기능 — DB 가 없거나 실패해도 원래 작업에는 영향 없게
+    if (usage) await import("./usage").then((u) => u.saveClaudeUsage(usage)).catch(() => {});
+    // stream-json 은 실패해도 시작 줄(init)이 먼저 찍혀 stdout 이 비지 않음 — 결과 줄이 없으면 오류로 판단
+    if (!parsed) {
+      if (code !== 0) throw classifyClaudeError(errText || `종료 코드 ${code}`);
       return { text: out };
     }
     if (parsed.is_error) throw classifyClaudeError(`${parsed.subtype ?? ""} ${parsed.result ?? ""}`);
